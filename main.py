@@ -1,0 +1,48 @@
+# main.py
+# -----------------------------------------------
+# Aplicación FastAPI principal para SmartPoS 2025
+# -----------------------------------------------
+
+from fastapi import FastAPI                          # Importa la clase principal de FastAPI
+from marca import router as marcas_router            # Importa el conjunto de endpoints definidos en marca.py
+from forma_pago import router as formas_pago_router  # Importa el conjunto de endpoints definidos en forma_pago.py
+from categoria import router as categorias_router   # Importa el conjunto de endpoints definidos en categoria.py
+# -------------------------------
+# Inicialización de la aplicación
+# -------------------------------
+app = FastAPI(
+    title="SmartPoS 2025"            # Nombre de la API que aparecerá en la documentación Swagger
+)
+
+# -------------------------------------------
+# Inclusión de routers (módulos de endpoints)
+# -------------------------------------------
+# Aquí montamos el router de marcas bajo el prefijo /marcas
+# - prefix: ruta base para todos los endpoints del router
+# - tags: agrupa en la UI de documentación las operaciones bajo "Marcas"
+app.include_router(
+    marcas_router,                      # Router importado de marca.py
+    prefix="/marcas",                   # Todas las rutas definidas en ese router irán bajo /marcas
+    tags=["Marcas"]                     # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    formas_pago_router,                 # Router importado de marca.py
+    prefix="/formas_pago",              # Todas las rutas definidas en ese router irán bajo /formas_pago
+    tags=["Formas de Pago"]             # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    categorias_router,                  # Router importado de categoria.py
+    prefix="/categorias",               # Todas las rutas definidas en ese router irán bajo /categorias
+    tags=["Categorias de Productos"]    # Etiqueta para organizar la documentación de OpenAPI
+)
+
+# ---------------------------
+# Endpoint raíz
+# ---------------------------
+@app.get("/")                           # Define un GET en la ruta raíz '/'
+async def root():                       # Función asíncrona que maneja la petición
+    # Retorna un mensaje JSON simple para verificar que el servicio esté en línea
+    return {"message": "SmartPoS 2025"}
+
