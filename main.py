@@ -4,9 +4,10 @@
 # -----------------------------------------------
 
 from fastapi import FastAPI                          # Importa la clase principal de FastAPI
-from marca import router as marcas_router            # Importa el conjunto de endpoints definidos en marca.py
-from forma_pago import router as formas_pago_router  # Importa el conjunto de endpoints definidos en forma_pago.py
-from categoria import router as categorias_router   # Importa el conjunto de endpoints definidos en categoria.py
+from marca import router as marcas_router            # Importa endpoints definidos en marca.py
+from forma_pago import router as formas_pago_router  # Importa endpoints definidos en forma_pago.py
+from categoria import router as categorias_router    # Importa endpoints definidos en categoria.py
+from umedida import router as umedida_router         # Importa endpoints definidos en umedida.py
 # -------------------------------
 # Inicialización de la aplicación
 # -------------------------------
@@ -36,6 +37,12 @@ app.include_router(
     categorias_router,                  # Router importado de categoria.py
     prefix="/categorias",               # Todas las rutas definidas en ese router irán bajo /categorias
     tags=["Categorias de Productos"]    # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    umedida_router,                     # Router importado de umedida.py
+    prefix="/umedidas",                 # Todas las rutas definidas en ese router irán bajo /umedidas
+    tags=["Unidades de medida"]         # Etiqueta para organizar la documentación de OpenAPI
 )
 
 # ---------------------------
