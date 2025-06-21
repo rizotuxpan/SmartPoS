@@ -3,11 +3,13 @@
 # Aplicación FastAPI principal para SmartPoS 2025
 # -----------------------------------------------
 
-from fastapi import FastAPI                          # Importa la clase principal de FastAPI
-from marca import router as marcas_router            # Importa endpoints definidos en marca.py
-from forma_pago import router as formas_pago_router  # Importa endpoints definidos en forma_pago.py
-from categoria import router as categorias_router    # Importa endpoints definidos en categoria.py
-from umedida import router as umedida_router         # Importa endpoints definidos en umedida.py
+from fastapi import FastAPI                            # Importa la clase principal de FastAPI
+from marca import router as marcas_router              # Importa endpoints definidos en marca.py
+from forma_pago import router as formas_pago_router    # Importa endpoints definidos en forma_pago.py
+from categoria import router as categorias_router      # Importa endpoints definidos en categoria.py
+from umedida import router as umedida_router           # Importa endpoints definidos en umedida.py
+from subcategoria import router as subcategoria_router # Importa endpoints definidos en subcategoria.py
+
 # -------------------------------
 # Inicialización de la aplicación
 # -------------------------------
@@ -22,27 +24,33 @@ app = FastAPI(
 # - prefix: ruta base para todos los endpoints del router
 # - tags: agrupa en la UI de documentación las operaciones bajo "Marcas"
 app.include_router(
-    marcas_router,                      # Router importado de marca.py
-    prefix="/marcas",                   # Todas las rutas definidas en ese router irán bajo /marcas
-    tags=["Marcas"]                     # Etiqueta para organizar la documentación de OpenAPI
+    marcas_router,                         # Router importado de marca.py
+    prefix="/marcas",                      # Todas las rutas definidas en ese router irán bajo /marcas
+    tags=["Marcas"]                        # Etiqueta para organizar la documentación de OpenAPI
 )
 
 app.include_router(
-    formas_pago_router,                 # Router importado de marca.py
-    prefix="/formas_pago",              # Todas las rutas definidas en ese router irán bajo /formas_pago
-    tags=["Formas de Pago"]             # Etiqueta para organizar la documentación de OpenAPI
+    formas_pago_router,                    # Router importado de marca.py
+    prefix="/formas_pago",                 # Todas las rutas definidas en ese router irán bajo /formas_pago
+    tags=["Formas de Pago"]                # Etiqueta para organizar la documentación de OpenAPI
 )
 
 app.include_router(
-    categorias_router,                  # Router importado de categoria.py
-    prefix="/categorias",               # Todas las rutas definidas en ese router irán bajo /categorias
-    tags=["Categorias de Productos"]    # Etiqueta para organizar la documentación de OpenAPI
+    categorias_router,                     # Router importado de categoria.py
+    prefix="/categorias",                  # Todas las rutas definidas en ese router irán bajo /categorias
+    tags=["Categorias de Productos"]       # Etiqueta para organizar la documentación de OpenAPI
 )
 
 app.include_router(
-    umedida_router,                     # Router importado de umedida.py
-    prefix="/umedidas",                 # Todas las rutas definidas en ese router irán bajo /umedidas
-    tags=["Unidades de medida"]         # Etiqueta para organizar la documentación de OpenAPI
+    umedida_router,                        # Router importado de umedida.py
+    prefix="/umedidas",                    # Todas las rutas definidas en ese router irán bajo /umedidas
+    tags=["Unidades de medida"]            # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    subcategoria_router,                   # Router importado de umedida.py
+    prefix="/subcategorias",               # Todas las rutas definidas en ese router irán bajo /umedidas
+    tags=["Sub Categorías de Productos"]   # Etiqueta para organizar la documentación de OpenAPI
 )
 
 # ---------------------------
