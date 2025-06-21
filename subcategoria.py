@@ -225,3 +225,42 @@ async def eliminar_subcategoria(
     await db.commit()
 
     return {"success": True, "message": "Subcategoría eliminada permanentemente"}
+
+
+@router.get("/categoria/{id_categoria}", response_model=dict)
+async def listar_subcategorias_por_categoria(
+    id_categoria: UUID,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Lista todas las subcategorías activas que pertenecen a una categoría dada,
+    con paginación opcional.
+    """
+    # 1) Obtener UUID del estado "activo"
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+
+    # 2) Construir consulta filtrando por categoría e id_estado
+    stmt = (
+        select(Subcategoria)
+        .where(
+            Subcategoria.id_estado    == estado_activo_id,
+            Subcategoria.id_categoria == id_categoria
+        )
+    )
+
+    # 3) Contar total de registros para paginación
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total = await db.scalar(total_stmt)
+
+    # 4) Ejecutar consulta paginada
+    result = await db.execute(stmt.offset(skip).limit(limit))
+    data = result.scalars().all()
+
+    # 5) Devolver respuesta
+    return {
+        "success": True,
+        "total_count": total,
+        "data": [SubcategoriaRead.model_validate(s) for s in data]
+    }
