@@ -3,17 +3,18 @@
 # Aplicación FastAPI principal para SmartPoS 2025
 # -----------------------------------------------
 
-from fastapi import FastAPI                            # Importa la clase principal de FastAPI
-                                                       # Importa endpoints definidos en:
-from marca import router as marcas_router              # marca.py
-from forma_pago import router as formas_pago_router    # forma_pago.py
-from categoria import router as categorias_router      # categoria.py
-from umedida import router as umedida_router           # umedida.py
-from subcategoria import router as subcategoria_router # subcategoria.py
-from empresa import router as empresa_router           # empresa.py
-from sucursal import router as sucursal_router         # sucursal.py
-from almacen import router as almacen_router           # almacen.py
-from cliente import router as cliente_router           # cliente.py 
+from fastapi import FastAPI                              # Importa la clase principal de FastAPI
+                                                         # Importa endpoints definidos en:
+from marca        import router as marcas_router         # marca.py
+from forma_pago   import router as formas_pago_router    # forma_pago.py
+from categoria    import router as categorias_router     # categoria.py
+from umedida      import router as umedida_router        # umedida.py
+from subcategoria import router as subcategoria_router   # subcategoria.py
+from empresa      import router as empresa_router        # empresa.py
+from sucursal     import router as sucursal_router       # sucursal.py
+from almacen      import router as almacen_router        # almacen.py
+from cliente      import router as cliente_router        # cliente.py
+from producto     import router as producto_router       # producto.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -80,6 +81,12 @@ app.include_router(
     cliente_router,                        # Router importado de cliente.py
     prefix="/clientes",                    # Todas las rutas definidas en ese router irán bajo /clientes
     tags=["Clientes"]                      # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    producto_router,                        # Router importado de producto.py
+    prefix="/productos",                    # Todas las rutas definidas en ese router irán bajo /productos
+    tags=["Productos"]                      # Etiqueta para organizar la documentación de OpenAPI
 )
 
 # ---------------------------
