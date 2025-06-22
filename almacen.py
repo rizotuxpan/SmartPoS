@@ -239,3 +239,43 @@ async def eliminar_almacen(
     await db.commit()
 
     return {"success": True, "message": "Almacén eliminado permanentemente"}
+
+@router.get("/sucursal/{id_sucursal}", response_model=dict)
+async def listar_almacenes_por_sucursal(
+    id_sucursal: UUID,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Lista los almacenes activos asociados a la sucursal indicada,
+    con paginación opcional.
+
+    Ruta completa: GET /almacen/sucursal/{id_sucursal}
+    """
+    # 1) Obtener UUID del estado "activo"
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+
+    # 2) Construir consulta filtrando por sucursal e id_estado
+    stmt = (
+        select(Almacen)
+        .where(
+            Almacen.id_estado   == estado_activo_id,
+            Almacen.id_sucursal == id_sucursal
+        )
+    )
+
+    # 3) Contar total de registros para paginación
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total = await db.scalar(total_stmt)
+
+    # 4) Ejecutar consulta paginada
+    result = await db.execute(stmt.offset(skip).limit(limit))
+    data = result.scalars().all()
+
+    # 5) Devolver respuesta con el mismo formato que otros endpoints
+    return {
+        "success": True,
+        "total_count": total,
+        "data": [AlmacenRead.model_validate(a) for a in data]
+    }
