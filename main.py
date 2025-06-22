@@ -9,6 +9,8 @@ from forma_pago import router as formas_pago_router    # Importa endpoints defin
 from categoria import router as categorias_router      # Importa endpoints definidos en categoria.py
 from umedida import router as umedida_router           # Importa endpoints definidos en umedida.py
 from subcategoria import router as subcategoria_router # Importa endpoints definidos en subcategoria.py
+from empresa import router as empresa_router           # Importa endpoints definidos en empresa.py
+from sucursal import router as sucursal_router         # Importa endpoints definidos en sucursal.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -48,9 +50,21 @@ app.include_router(
 )
 
 app.include_router(
-    subcategoria_router,                   # Router importado de umedida.py
-    prefix="/subcategorias",               # Todas las rutas definidas en ese router irán bajo /umedidas
+    subcategoria_router,                   # Router importado de subcategoria.py
+    prefix="/subcategorias",               # Todas las rutas definidas en ese router irán bajo /subcategorias
     tags=["Sub Categorías de Productos"]   # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    empresa_router,                        # Router importado de empresa.py
+    prefix="/empresas",                    # Todas las rutas definidas en ese router irán bajo /empresas
+    tags=["Empresas"]                      # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    sucursal_router,                       # Router importado de sucursal.py
+    prefix="/sucursales",                  # Todas las rutas definidas en ese router irán bajo /sucursales
+    tags=["Sucursales"]                      # Etiqueta para organizar la documentación de OpenAPI
 )
 
 # ---------------------------
@@ -59,5 +73,5 @@ app.include_router(
 @app.get("/")                           # Define un GET en la ruta raíz '/'
 async def root():                       # Función asíncrona que maneja la petición
     # Retorna un mensaje JSON simple para verificar que el servicio esté en línea
-    return {"message": "SmartPoS 2025"}
+    return {"Welcome": "SmartPoS 2025"}
 
