@@ -11,6 +11,7 @@ from umedida import router as umedida_router           # Importa endpoints defin
 from subcategoria import router as subcategoria_router # Importa endpoints definidos en subcategoria.py
 from empresa import router as empresa_router           # Importa endpoints definidos en empresa.py
 from sucursal import router as sucursal_router         # Importa endpoints definidos en sucursal.py
+from almacen import router as almacen_router           # Importa endpoints definidos en almacen.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -64,7 +65,13 @@ app.include_router(
 app.include_router(
     sucursal_router,                       # Router importado de sucursal.py
     prefix="/sucursales",                  # Todas las rutas definidas en ese router irán bajo /sucursales
-    tags=["Sucursales"]                      # Etiqueta para organizar la documentación de OpenAPI
+    tags=["Sucursales"]                    # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    almacen_router,                        # Router importado de almacen.py
+    prefix="/almacenes",                   # Todas las rutas definidas en ese router irán bajo /almacenes
+    tags=["Almacenes"]                     # Etiqueta para organizar la documentación de OpenAPI
 )
 
 # ---------------------------
