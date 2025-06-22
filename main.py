@@ -15,6 +15,7 @@ from sucursal     import router as sucursal_router       # sucursal.py
 from almacen      import router as almacen_router        # almacen.py
 from cliente      import router as cliente_router        # cliente.py
 from producto     import router as producto_router       # producto.py
+from terminal     import router as terminal_router       # terminal.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -87,6 +88,12 @@ app.include_router(
     producto_router,                        # Router importado de producto.py
     prefix="/productos",                    # Todas las rutas definidas en ese router irán bajo /productos
     tags=["Productos"]                      # Etiqueta para organizar la documentación de OpenAPI
+)
+
+app.include_router(
+    terminal_router,                        # Router importado de terminal.py
+    prefix="/terminales",                   # Todas las rutas definidas en ese router irán bajo /terminales
+    tags=["Terminales"]                     # Etiqueta para organizar la documentación de OpenAPI
 )
 
 # ---------------------------
