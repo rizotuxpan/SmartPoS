@@ -1,9 +1,15 @@
+# entidad.py
+# ---------------------------
+# Módulo de endpoints REST para gestión de la tabla “entidad”.
+# Usa FastAPI, SQLAlchemy Async y Pydantic para validación.
+# ---------------------------
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from pydantic import BaseModel
 from typing import Optional, List
 from sqlalchemy import Column, String, select, func, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship, selectinload
+from sqlalchemy.orm import relationship
 
 from db import Base, get_async_db
 
@@ -28,7 +34,7 @@ class Municipio(Base):
     cve_mun = Column(String(4), nullable=False)
     nomgeo = Column(String(100), nullable=False)
 
-    entidad = relationship()
+    entidad = relationship("Entidad", back_populates="municipios")
 
 # -------------------------
 # Schemas Pydantic lectura
@@ -52,7 +58,7 @@ class EntidadRead(BaseModel):
 # ---------------------------
 # Router y endpoints GET
 # ---------------------------
-router = APIRouter(prefix="/entidad", tags=["Entidad"])
+router = APIRouter()
 
 @router.get("/", response_model=dict)
 async def listar_entidades(
@@ -89,18 +95,21 @@ async def obtener_entidad(
     """
     Obtiene una entidad por su clave primaria cvegeo e incluye municipios relacionados.
     """
-    # Carga entidad y municipios con un solo query via selectinload
-    stmt = (
-        select(Entidad)
-        .options(selectinload(Entidad.municipios))
-        .where(Entidad.cvegeo == cvegeo)
-    )
-    result = await db.execute(stmt)
-    entidad = result.scalar_one_or_none()
+    # 1) Recuperar entidad
+    stmt_ent = select(Entidad).where(Entidad.cvegeo == cvegeo)
+    result_ent = await db.execute(stmt_ent)
+    entidad = result_ent.scalar_one_or_none()
 
     if not entidad:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
+    # 2) Recuperar municipios relacionados
+    stmt_mun = select(Municipio).where(Municipio.cve_ent == cvegeo)
+    result_mun = await db.execute(stmt_mun)
+    municipios = result_mun.scalars().all()
+
+    # 3) Asignar lista y devolver
+    entidad.municipios = municipios
     return EntidadRead.model_validate(entidad)
 
 @router.get("/nombre/{nomgeo}", response_model=EntidadRead)
@@ -111,15 +120,15 @@ async def obtener_entidad_por_nombre(
     """
     Obtiene una entidad por su nombre (nomgeo) e incluye municipios relacionados.
     """
-    stmt = (
-        select(Entidad)
-        .options(selectinload(Entidad.municipios))
-        .where(Entidad.nomgeo == nomgeo)
-    )
-    result = await db.execute(stmt)
-    entidad = result.scalar_one_or_none()
+    stmt_ent = select(Entidad).where(Entidad.nomgeo == nomgeo)
+    result_ent = await db.execute(stmt_ent)
+    entidad = result_ent.scalar_one_or_none()
 
     if not entidad:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
+
+    stmt_mun = select(Municipio).where(Municipio.cve_ent == entidad.cvegeo)
+    result_mun = await db.execute(stmt_mun)
+    entidad.municipios = result_mun.scalars().all()
 
     return EntidadRead.model_validate(entidad)

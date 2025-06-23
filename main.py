@@ -17,6 +17,7 @@ from cliente      import router as cliente_router        # cliente.py
 from producto     import router as producto_router       # producto.py
 from terminal     import router as terminal_router       # terminal.py
 from entidad      import router as entidad_router        # entidad.py
+from municipio    import router as municipio_router      # municipio.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -102,6 +103,13 @@ app.include_router(
     prefix="/entidades",                   # Todas las rutas definidas en ese router irán bajo /entidades
     tags=["Entidades"]                     # Etiqueta para organizar la documentación de OpenAPI
 )
+
+app.include_router(
+    municipio_router,                       # Router importado de municipio.py
+    prefix="/municipios",                   # Todas las rutas definidas en ese router irán bajo /municipios
+    tags=["Municipios"]                     # Etiqueta para organizar la documentación de OpenAPI
+)
+
 
 # ---------------------------
 # Endpoint raíz
