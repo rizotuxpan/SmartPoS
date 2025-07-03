@@ -13,11 +13,10 @@ from subcategoria import router as subcategoria_router   # subcategoria.py
 from empresa      import router as empresa_router        # empresa.py
 from sucursal     import router as sucursal_router       # sucursal.py
 from almacen      import router as almacen_router        # almacen.py
-from cliente      import router as cliente_router        # cliente.py
+# from cliente      import router as cliente_router        # cliente.py
 from producto     import router as producto_router       # producto.py
 from terminal     import router as terminal_router       # terminal.py
-from entidad      import router as entidad_router        # entidad.py
-from municipio    import router as municipio_router      # municipio.py
+from eml          import router as eml_router            # eml.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -80,11 +79,11 @@ app.include_router(
     tags=["Almacenes"]                     # Etiqueta para organizar la documentación de OpenAPI
 )
 
-app.include_router(
-    cliente_router,                        # Router importado de cliente.py
-    prefix="/clientes",                    # Todas las rutas definidas en ese router irán bajo /clientes
-    tags=["Clientes"]                      # Etiqueta para organizar la documentación de OpenAPI
-)
+#app.include_router(
+#    cliente_router,                        # Router importado de cliente.py
+#    prefix="/clientes",                    # Todas las rutas definidas en ese router irán bajo /clientes
+#    tags=["Clientes"]                      # Etiqueta para organizar la documentación de OpenAPI
+#)
 
 app.include_router(
     producto_router,                        # Router importado de producto.py
@@ -99,15 +98,9 @@ app.include_router(
 )
 
 app.include_router(
-    entidad_router,                        # Router importado de entidad.py
-    prefix="/entidades",                   # Todas las rutas definidas en ese router irán bajo /entidades
-    tags=["Entidades"]                     # Etiqueta para organizar la documentación de OpenAPI
-)
-
-app.include_router(
-    municipio_router,                       # Router importado de municipio.py
-    prefix="/municipios",                   # Todas las rutas definidas en ese router irán bajo /municipios
-    tags=["Municipios"]                     # Etiqueta para organizar la documentación de OpenAPI
+    eml_router,                                   # Router importado de entidad.py
+    prefix="/eml",                                # Todas las rutas definidas en ese router irán bajo /entidades
+    tags=["Entidades, Municipios y Localidades"]  # Etiqueta para organizar la documentación de OpenAPI
 )
 
 
@@ -118,4 +111,3 @@ app.include_router(
 async def root():                       # Función asíncrona que maneja la petición
     # Retorna un mensaje JSON simple para verificar que el servicio esté en línea
     return {"Welcome": "SmartPoS 2025"}
-
