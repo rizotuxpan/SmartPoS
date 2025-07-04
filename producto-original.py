@@ -1,7 +1,8 @@
-# producto.py - VERSIÓN EXPANDIDA
+# producto.py
 # ---------------------------
 # Módulo de endpoints REST para gestión de la entidad Producto.
-# Incluye objetos relacionados completos (Marca, UMedida, Categoría, Subcategoría)
+# Usa FastAPI, SQLAlchemy Async y Pydantic para validación.
+# Implementa Row-Level Security (RLS) vía variables de sesión en PostgreSQL.
 
 from fastapi import APIRouter, Depends, HTTPException, Query    # FastAPI para rutas y dependencias
 from pydantic import BaseModel                                  # Pydantic para schemas de entrada/salida
@@ -23,18 +24,12 @@ from utils.estado import get_estado_id_por_clave
 # Utilidad para extraer tenant y usuario desde la sesión (RLS)
 from utils.contexto import obtener_contexto  # IMPORTANTE
 
-# ===== IMPORTAR MODELOS Y ESQUEMAS RELACIONADOS =====
-# Necesitas agregar estos imports a tu archivo
-from marca import Marca, MarcaRead
-from umedida import UMedida, UMedidaRead
-from categoria import Categoria, CategoriaRead
-from subcategoria import Subcategoria, SubcategoriaRead
-
 # --------------------------------------
 # Definición del modelo ORM (SQLAlchemy)
 # --------------------------------------
 class Producto(Base):
     __tablename__ = "producto"
+
     id_producto    = Column(
         PG_UUID(as_uuid=True),
         primary_key=True,
@@ -123,27 +118,7 @@ class ProductoRead(ProductoBase):
     modified_by: UUID
     created_at: datetime
     updated_at: datetime
-    model_config = {"from_attributes": True}
 
-# ===== NUEVO ESQUEMA EXPANDIDO =====
-class ProductoReadExpanded(ProductoBase):
-    """
-    Esquema de lectura expandido con objetos relacionados completos.
-    """
-    id_producto: UUID
-    id_empresa: UUID
-    id_estado: UUID
-    created_by: UUID
-    modified_by: UUID
-    created_at: datetime
-    updated_at: datetime
-    
-    # Objetos relacionados completos
-    marca: Optional[MarcaRead] = None
-    umedida: Optional[UMedidaRead] = None
-    categoria: Optional[CategoriaRead] = None
-    subcategoria: Optional[SubcategoriaRead] = None
-    
     model_config = {"from_attributes": True}
 
 # ---------------------------
@@ -156,228 +131,56 @@ async def listar_productos(
     nombre: Optional[str] = Query(None),
     sku: Optional[str] = Query(None),
     codigo_barras: Optional[str] = Query(None),
-    expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Lista productos en estado "activo" con paginación, filtros opcionales 
-    y opción de expandir objetos relacionados.
+    Lista productos en estado "activo" con paginación y filtros opcionales.
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    if expandir:
-        # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS =====
-        stmt = (
-            select(
-                Producto,
-                Marca,
-                UMedida,
-                Categoria,
-                Subcategoria
-            )
-            .outerjoin(
-                Marca, 
-                (Producto.id_marca == Marca.id_marca) & 
-                (Marca.id_estado == estado_activo_id)
-            )
-            .outerjoin(
-                UMedida, 
-                (Producto.id_umedida == UMedida.id_umedida) & 
-                (UMedida.id_estado == estado_activo_id)
-            )
-            .outerjoin(
-                Categoria, 
-                (Producto.id_categoria == Categoria.id_categoria) & 
-                (Categoria.id_estado == estado_activo_id)
-            )
-            .outerjoin(
-                Subcategoria, 
-                (Producto.id_subcategoria == Subcategoria.id_subcategoria) & 
-                (Subcategoria.id_estado == estado_activo_id)
-            )
-            .where(Producto.id_estado == estado_activo_id)
-        )
-        
-        # Aplicar filtros
-        if nombre:
-            stmt = stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            stmt = stmt.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            stmt = stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
-        
-        # Contar total para paginación
-        count_stmt = (
-            select(func.count(Producto.id_producto))
-            .where(Producto.id_estado == estado_activo_id)
-        )
-        if nombre:
-            count_stmt = count_stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            count_stmt = count_stmt.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            count_stmt = count_stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
-        
-        total = await db.scalar(count_stmt)
-        
-        # Ejecutar consulta paginada
-        result = await db.execute(stmt.offset(skip).limit(limit))
-        
-        # ===== CONSTRUIR RESPUESTA EXPANDIDA =====
-        data = []
-        for row in result:
-            producto_obj = row[0]  # Objeto Producto
-            marca_obj = row[1]     # Objeto Marca (puede ser None)
-            umedida_obj = row[2]   # Objeto UMedida (puede ser None)
-            categoria_obj = row[3] # Objeto Categoria (puede ser None)
-            subcategoria_obj = row[4] # Objeto Subcategoria (puede ser None)
-            
-            # Convertir producto base
-            producto_dict = ProductoRead.model_validate(producto_obj).model_dump()
-            
-            # Agregar objetos relacionados si existen
-            if marca_obj:
-                producto_dict['marca'] = MarcaRead.model_validate(marca_obj).model_dump()
-            else:
-                producto_dict['marca'] = None
-                
-            if umedida_obj:
-                producto_dict['umedida'] = UMedidaRead.model_validate(umedida_obj).model_dump()
-            else:
-                producto_dict['umedida'] = None
-                
-            if categoria_obj:
-                producto_dict['categoria'] = CategoriaRead.model_validate(categoria_obj).model_dump()
-            else:
-                producto_dict['categoria'] = None
-                
-            if subcategoria_obj:
-                producto_dict['subcategoria'] = SubcategoriaRead.model_validate(subcategoria_obj).model_dump()
-            else:
-                producto_dict['subcategoria'] = None
-            
-            data.append(producto_dict)
-    
-    else:
-        # ===== CONSULTA NORMAL SIN JOINS (COMO ANTES) =====
-        stmt = select(Producto).where(Producto.id_estado == estado_activo_id)
-        
-        if nombre:
-            stmt = stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            stmt = stmt.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            stmt = stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
-        
-        total_stmt = select(func.count()).select_from(stmt.subquery())
-        total = await db.scalar(total_stmt)
-        
-        result = await db.execute(stmt.offset(skip).limit(limit))
-        productos = result.scalars().all()
-        
-        data = [ProductoRead.model_validate(p).model_dump() for p in productos]
+
+    stmt = select(Producto).where(Producto.id_estado == estado_activo_id)
+    if nombre:
+        stmt = stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
+    if sku:
+        stmt = stmt.where(Producto.sku.ilike(f"%{sku}%"))
+    if codigo_barras:
+        stmt = stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total = await db.scalar(total_stmt)
+
+    result = await db.execute(stmt.offset(skip).limit(limit))
+    data = result.scalars().all()
 
     return {
         "success": True,
         "total_count": total,
-        "expandido": expandir,
-        "data": data
+        "data": [ProductoRead.model_validate(p) for p in data]
     }
 
-@router.get("/{id_producto}", response_model=dict)
+@router.get("/{id_producto}", response_model=ProductoRead)
 async def obtener_producto(
     id_producto: UUID,
-    expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Obtiene un producto por su ID, con opción de expandir objetos relacionados.
+    Obtiene un producto por su ID, sólo si está en estado "activo".
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    if expandir:
-        # Consulta con joins
-        stmt = (
-            select(
-                Producto,
-                Marca,
-                UMedida,
-                Categoria,
-                Subcategoria
-            )
-            .outerjoin(
-                Marca, 
-                (Producto.id_marca == Marca.id_marca) & 
-                (Marca.id_estado == estado_activo_id)
-            )
-            .outerjoin(
-                UMedida, 
-                (Producto.id_umedida == UMedida.id_umedida) & 
-                (UMedida.id_estado == estado_activo_id)
-            )
-            .outerjoin(
-                Categoria, 
-                (Producto.id_categoria == Categoria.id_categoria) & 
-                (Categoria.id_estado == estado_activo_id)
-            )
-            .outerjoin(
-                Subcategoria, 
-                (Producto.id_subcategoria == Subcategoria.id_subcategoria) & 
-                (Subcategoria.id_estado == estado_activo_id)
-            )
-            .where(
-                Producto.id_producto == id_producto,
-                Producto.id_estado == estado_activo_id
-            )
-        )
-        
-        result = await db.execute(stmt)
-        row = result.first()
-        
-        if not row:
-            raise HTTPException(status_code=404, detail="Producto no encontrado")
-        
-        # Construir respuesta expandida
-        producto_obj = row[0]
-        marca_obj = row[1]
-        umedida_obj = row[2]
-        categoria_obj = row[3]
-        subcategoria_obj = row[4]
-        
-        producto_dict = ProductoRead.model_validate(producto_obj).model_dump()
-        
-        producto_dict['marca'] = MarcaRead.model_validate(marca_obj).model_dump() if marca_obj else None
-        producto_dict['umedida'] = UMedidaRead.model_validate(umedida_obj).model_dump() if umedida_obj else None
-        producto_dict['categoria'] = CategoriaRead.model_validate(categoria_obj).model_dump() if categoria_obj else None
-        producto_dict['subcategoria'] = SubcategoriaRead.model_validate(subcategoria_obj).model_dump() if subcategoria_obj else None
-        
-        return {
-            "success": True,
-            "expandido": True,
-            "data": producto_dict
-        }
-    
-    else:
-        # Consulta normal
-        stmt = select(Producto).where(
-            Producto.id_producto == id_producto,
-            Producto.id_estado == estado_activo_id
-        )
-        result = await db.execute(stmt)
-        producto = result.scalar_one_or_none()
-        
-        if not producto:
-            raise HTTPException(status_code=404, detail="Producto no encontrado")
-        
-        return {
-            "success": True,
-            "expandido": False,
-            "data": ProductoRead.model_validate(producto).model_dump()
-        }
 
-# ===== RESTO DE ENDPOINTS PERMANECEN IGUAL =====
+    stmt = select(Producto).where(
+        Producto.id_producto == id_producto,
+        Producto.id_estado    == estado_activo_id
+    )
+    result = await db.execute(stmt)
+    producto = result.scalar_one_or_none()
+
+    if not producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+    return ProductoRead.model_validate(producto)
 
 @router.post("/", response_model=dict, status_code=201)
 async def crear_producto(
@@ -388,6 +191,7 @@ async def crear_producto(
     Crea un nuevo producto. Aplica RLS y defaults de servidor.
     """
     ctx = await obtener_contexto(db)
+
     nuevo = Producto(
         sku             = entrada.sku,
         codigo_barras   = entrada.codigo_barras,
@@ -410,9 +214,11 @@ async def crear_producto(
         id_empresa      = ctx["tenant_id"]
     )
     db.add(nuevo)
+
     await db.flush()
     await db.refresh(nuevo)
     await db.commit()
+
     return {"success": True, "data": ProductoRead.model_validate(nuevo)}
 
 @router.put("/{id_producto}", response_model=dict)
@@ -425,6 +231,7 @@ async def actualizar_producto(
     Actualiza datos de un producto en estado "activo".
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
+
     stmt = select(Producto).where(
         Producto.id_producto == id_producto,
         Producto.id_estado    == estado_activo_id
@@ -433,6 +240,7 @@ async def actualizar_producto(
     producto = result.scalar_one_or_none()
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
+
     ctx = await obtener_contexto(db)
     producto.sku             = entrada.sku
     producto.codigo_barras   = entrada.codigo_barras
@@ -451,9 +259,11 @@ async def actualizar_producto(
     producto.id_categoria    = entrada.id_categoria
     producto.id_subcategoria = entrada.id_subcategoria
     producto.modified_by     = ctx["user_id"]
+
     await db.flush()
     await db.refresh(producto)
     await db.commit()
+
     return {"success": True, "data": ProductoRead.model_validate(producto)}
 
 @router.delete("/{id_producto}", status_code=200)
@@ -470,6 +280,8 @@ async def eliminar_producto(
     producto = result.scalar_one_or_none()
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
+
     await db.execute(delete(Producto).where(Producto.id_producto == id_producto))
     await db.commit()
+
     return {"success": True, "message": "Producto eliminado permanentemente"}
