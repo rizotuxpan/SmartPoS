@@ -605,8 +605,6 @@ async def obtener_producto(
             "data": ProductoRead.model_validate(producto).model_dump()
         }
 
-# ===== RESTO DE ENDPOINTS PERMANECEN IGUAL =====
-
 @router.post("/", response_model=dict, status_code=201)
 async def crear_producto(
     entrada: ProductoCreate,
