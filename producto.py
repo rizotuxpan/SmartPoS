@@ -4,11 +4,11 @@
 # Incluye objetos relacionados completos y filtros avanzados
 
 from fastapi import APIRouter, Depends, HTTPException, Query    # FastAPI para rutas y dependencias
-from pydantic import BaseModel                                  # Pydantic para schemas de entrada/salida
-from typing import Optional                                      # Tipos para anotaciones
-from uuid import UUID                                            # UUID para identificadores únicos
+from pydantic import BaseModel, model_validator                 # Pydantic para schemas de entrada/salida
+from typing import Optional                                     # Tipos para anotaciones
+from uuid import UUID                                           # UUID para identificadores únicos
 from datetime import datetime                                   # Fecha y hora
-from decimal import Decimal                                      # Para campos numéricos de alta precisión
+from decimal import Decimal                                     # Para campos numéricos de alta precisión
 from sqlalchemy import (
     Column, String, Text, DateTime, Numeric, Boolean, Integer,
     func, select, text, delete, and_, or_, cast
