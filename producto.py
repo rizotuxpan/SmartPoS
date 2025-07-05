@@ -1,7 +1,7 @@
-# producto.py - VERSIÓN EXPANDIDA
+# producto.py - VERSIÓN EXPANDIDA CON FILTROS EXTENDIDOS
 # ---------------------------
 # Módulo de endpoints REST para gestión de la entidad Producto.
-# Incluye objetos relacionados completos (Marca, UMedida, Categoría, Subcategoría)
+# Incluye objetos relacionados completos y filtros avanzados
 
 from fastapi import APIRouter, Depends, HTTPException, Query    # FastAPI para rutas y dependencias
 from pydantic import BaseModel                                  # Pydantic para schemas de entrada/salida
@@ -11,7 +11,7 @@ from datetime import datetime                                   # Fecha y hora
 from decimal import Decimal                                      # Para campos numéricos de alta precisión
 from sqlalchemy import (
     Column, String, Text, DateTime, Numeric, Boolean, Integer,
-    func, select, text, delete
+    func, select, text, delete, and_, or_
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT  # Tipos PostgreSQL específicos
 from sqlalchemy.ext.asyncio import AsyncSession                 # Sesión asíncrona de SQLAlchemy
@@ -24,7 +24,6 @@ from utils.estado import get_estado_id_por_clave
 from utils.contexto import obtener_contexto  # IMPORTANTE
 
 # ===== IMPORTAR MODELOS Y ESQUEMAS RELACIONADOS =====
-# Necesitas agregar estos imports a tu archivo
 from marca import Marca, MarcaRead
 from umedida import UMedida, UMedidaRead
 from categoria import Categoria, CategoriaRead
@@ -153,19 +152,82 @@ router = APIRouter()
 
 @router.get("/", response_model=dict)
 async def listar_productos(
-    nombre: Optional[str] = Query(None),
-    sku: Optional[str] = Query(None),
-    codigo_barras: Optional[str] = Query(None),
+    # ===== FILTROS BÁSICOS =====
+    nombre: Optional[str] = Query(None, description="Filtro por nombre del producto"),
+    sku: Optional[str] = Query(None, description="Filtro por SKU del producto"),
+    codigo_barras: Optional[str] = Query(None, description="Filtro por código de barras"),
+    
+    # ===== FILTROS DE PRECIO EXTENDIDOS =====
+    precio: Optional[float] = Query(None, description="Precio exacto"),
+    precio_min: Optional[float] = Query(None, description="Precio mínimo (>=)"),
+    precio_max: Optional[float] = Query(None, description="Precio máximo (<=)"),
+    precio_mayor: Optional[float] = Query(None, description="Precio mayor que (>)"),
+    precio_menor: Optional[float] = Query(None, description="Precio menor que (<)"),
+    precio_texto: Optional[str] = Query(None, description="Búsqueda textual en precio"),
+    
+    # ===== FILTROS POR NOMBRES DE ENTIDADES RELACIONADAS =====
+    marca_nombre: Optional[str] = Query(None, description="Filtro por nombre de marca"),
+    categoria_nombre: Optional[str] = Query(None, description="Filtro por nombre de categoría"),
+    subcategoria_nombre: Optional[str] = Query(None, description="Filtro por nombre de subcategoría"),
+    
+    # ===== PARÁMETROS DE CONFIGURACIÓN =====
     expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, description="Número de registros a omitir"),
+    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros a retornar"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Lista productos en estado "activo" con paginación, filtros opcionales 
+    Lista productos en estado "activo" con paginación, filtros opcionales extendidos
     y opción de expandir objetos relacionados.
+    
+    ✅ FILTROS SOPORTADOS:
+    - Básicos: nombre, sku, codigo_barras
+    - Precio: exacto, rangos (min/max), comparaciones (>/< y >=/<=)
+    - Entidades relacionadas: búsqueda por nombre en marca, categoría, subcategoría
+    
+    ✅ EJEMPLOS DE USO:
+    - /productos?nombre=iPhone&marca_nombre=Apple
+    - /productos?precio_min=500&precio_max=1000&categoria_nombre=Tecnología
+    - /productos?precio_mayor=300&subcategoria_nombre=Smartphones
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    # ===== FUNCIÓN AUXILIAR PARA APLICAR FILTROS =====
+    def aplicar_filtros_basicos(stmt):
+        """Aplica filtros básicos que funcionan tanto con joins como sin joins"""
+        if nombre:
+            stmt = stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
+        if sku:
+            stmt = stmt.where(Producto.sku.ilike(f"%{sku}%"))
+        if codigo_barras:
+            stmt = stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
+        
+        # ===== FILTROS DE PRECIO =====
+        if precio is not None:
+            stmt = stmt.where(Producto.precio_base == precio)
+        if precio_min is not None:
+            stmt = stmt.where(Producto.precio_base >= precio_min)
+        if precio_max is not None:
+            stmt = stmt.where(Producto.precio_base <= precio_max)
+        if precio_mayor is not None:
+            stmt = stmt.where(Producto.precio_base > precio_mayor)
+        if precio_menor is not None:
+            stmt = stmt.where(Producto.precio_base < precio_menor)
+        if precio_texto:
+            # Búsqueda textual en precio (útil para formatos como "$100.00")
+            stmt = stmt.where(func.cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
+        
+        return stmt
+    
+    def aplicar_filtros_entidades(stmt):
+        """Aplica filtros por nombres de entidades relacionadas (solo para consultas con joins)"""
+        if marca_nombre:
+            stmt = stmt.where(Marca.nombre.ilike(f"%{marca_nombre}%"))
+        if categoria_nombre:
+            stmt = stmt.where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
+        if subcategoria_nombre:
+            stmt = stmt.where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
+        return stmt
     
     if expandir:
         # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS =====
@@ -179,46 +241,70 @@ async def listar_productos(
             )
             .outerjoin(
                 Marca, 
-                (Producto.id_marca == Marca.id_marca) & 
-                (Marca.id_estado == estado_activo_id)
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
             )
             .outerjoin(
                 UMedida, 
-                (Producto.id_umedida == UMedida.id_umedida) & 
-                (UMedida.id_estado == estado_activo_id)
+                and_(
+                    Producto.id_umedida == UMedida.id_umedida,
+                    UMedida.id_estado == estado_activo_id
+                )
             )
             .outerjoin(
                 Categoria, 
-                (Producto.id_categoria == Categoria.id_categoria) & 
-                (Categoria.id_estado == estado_activo_id)
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
             )
             .outerjoin(
                 Subcategoria, 
-                (Producto.id_subcategoria == Subcategoria.id_subcategoria) & 
-                (Subcategoria.id_estado == estado_activo_id)
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
             )
             .where(Producto.id_estado == estado_activo_id)
         )
         
-        # Aplicar filtros
-        if nombre:
-            stmt = stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            stmt = stmt.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            stmt = stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
+        # Aplicar todos los filtros
+        stmt = aplicar_filtros_basicos(stmt)
+        stmt = aplicar_filtros_entidades(stmt)
         
-        # Contar total para paginación
+        # ===== CONTAR TOTAL PARA PAGINACIÓN (con los mismos filtros) =====
         count_stmt = (
             select(func.count(Producto.id_producto))
+            .select_from(
+                Producto
+                .outerjoin(
+                    Marca, 
+                    and_(
+                        Producto.id_marca == Marca.id_marca,
+                        Marca.id_estado == estado_activo_id
+                    )
+                )
+                .outerjoin(
+                    Categoria, 
+                    and_(
+                        Producto.id_categoria == Categoria.id_categoria,
+                        Categoria.id_estado == estado_activo_id
+                    )
+                )
+                .outerjoin(
+                    Subcategoria, 
+                    and_(
+                        Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                        Subcategoria.id_estado == estado_activo_id
+                    )
+                )
+            )
             .where(Producto.id_estado == estado_activo_id)
         )
-        if nombre:
-            count_stmt = count_stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            count_stmt = count_stmt.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            count_stmt = count_stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
+        count_stmt = aplicar_filtros_basicos(count_stmt)
+        count_stmt = aplicar_filtros_entidades(count_stmt)
         
         total = await db.scalar(count_stmt)
         
@@ -238,42 +324,87 @@ async def listar_productos(
             producto_dict = ProductoRead.model_validate(producto_obj).model_dump()
             
             # Agregar objetos relacionados si existen
-            if marca_obj:
-                producto_dict['marca'] = MarcaRead.model_validate(marca_obj).model_dump()
-            else:
-                producto_dict['marca'] = None
-                
-            if umedida_obj:
-                producto_dict['umedida'] = UMedidaRead.model_validate(umedida_obj).model_dump()
-            else:
-                producto_dict['umedida'] = None
-                
-            if categoria_obj:
-                producto_dict['categoria'] = CategoriaRead.model_validate(categoria_obj).model_dump()
-            else:
-                producto_dict['categoria'] = None
-                
-            if subcategoria_obj:
-                producto_dict['subcategoria'] = SubcategoriaRead.model_validate(subcategoria_obj).model_dump()
-            else:
-                producto_dict['subcategoria'] = None
+            producto_dict['marca'] = MarcaRead.model_validate(marca_obj).model_dump() if marca_obj else None
+            producto_dict['umedida'] = UMedidaRead.model_validate(umedida_obj).model_dump() if umedida_obj else None
+            producto_dict['categoria'] = CategoriaRead.model_validate(categoria_obj).model_dump() if categoria_obj else None
+            producto_dict['subcategoria'] = SubcategoriaRead.model_validate(subcategoria_obj).model_dump() if subcategoria_obj else None
             
             data.append(producto_dict)
     
     else:
-        # ===== CONSULTA NORMAL SIN JOINS (COMO ANTES) =====
+        # ===== CONSULTA SIN JOINS (CON JOINS CONDICIONALES PARA FILTROS DE ENTIDADES) =====
         stmt = select(Producto).where(Producto.id_estado == estado_activo_id)
         
-        if nombre:
-            stmt = stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            stmt = stmt.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            stmt = stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
+        # Aplicar filtros básicos
+        stmt = aplicar_filtros_basicos(stmt)
         
-        total_stmt = select(func.count()).select_from(stmt.subquery())
-        total = await db.scalar(total_stmt)
+        # ===== APLICAR FILTROS DE ENTIDADES RELACIONADAS (requieren joins específicos) =====
+        joins_added = []
         
+        if marca_nombre:
+            stmt = stmt.join(
+                Marca,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
+            ).where(Marca.nombre.ilike(f"%{marca_nombre}%"))
+            joins_added.append("marca")
+        
+        if categoria_nombre:
+            stmt = stmt.join(
+                Categoria,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            ).where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
+            joins_added.append("categoria")
+        
+        if subcategoria_nombre:
+            stmt = stmt.join(
+                Subcategoria,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            ).where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
+            joins_added.append("subcategoria")
+        
+        # Contar total (replicando los mismos joins y filtros)
+        count_stmt = select(func.count(Producto.id_producto)).where(Producto.id_estado == estado_activo_id)
+        count_stmt = aplicar_filtros_basicos(count_stmt)
+        
+        if marca_nombre:
+            count_stmt = count_stmt.join(
+                Marca,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
+            ).where(Marca.nombre.ilike(f"%{marca_nombre}%"))
+        
+        if categoria_nombre:
+            count_stmt = count_stmt.join(
+                Categoria,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            ).where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
+        
+        if subcategoria_nombre:
+            count_stmt = count_stmt.join(
+                Subcategoria,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            ).where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
+        
+        total = await db.scalar(count_stmt)
+        
+        # Ejecutar consulta paginada
         result = await db.execute(stmt.offset(skip).limit(limit))
         productos = result.scalars().all()
         
@@ -283,6 +414,33 @@ async def listar_productos(
         "success": True,
         "total_count": total,
         "expandido": expandir,
+        "filtros_aplicados": {
+            "basicos": {
+                "nombre": nombre,
+                "sku": sku,
+                "codigo_barras": codigo_barras
+            },
+            "precio": {
+                "exacto": precio,
+                "min": precio_min,
+                "max": precio_max,
+                "mayor": precio_mayor,
+                "menor": precio_menor,
+                "texto": precio_texto
+            },
+            "entidades": {
+                "marca_nombre": marca_nombre,
+                "categoria_nombre": categoria_nombre,
+                "subcategoria_nombre": subcategoria_nombre
+            }
+        },
+        "paginacion": {
+            "skip": skip,
+            "limit": limit,
+            "total": total,
+            "pagina_actual": (skip // limit) + 1,
+            "total_paginas": ((total - 1) // limit) + 1 if total > 0 else 0
+        },
         "data": data
     }
 
@@ -309,23 +467,31 @@ async def obtener_producto(
             )
             .outerjoin(
                 Marca, 
-                (Producto.id_marca == Marca.id_marca) & 
-                (Marca.id_estado == estado_activo_id)
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
             )
             .outerjoin(
                 UMedida, 
-                (Producto.id_umedida == UMedida.id_umedida) & 
-                (UMedida.id_estado == estado_activo_id)
+                and_(
+                    Producto.id_umedida == UMedida.id_umedida,
+                    UMedida.id_estado == estado_activo_id
+                )
             )
             .outerjoin(
                 Categoria, 
-                (Producto.id_categoria == Categoria.id_categoria) & 
-                (Categoria.id_estado == estado_activo_id)
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
             )
             .outerjoin(
                 Subcategoria, 
-                (Producto.id_subcategoria == Subcategoria.id_subcategoria) & 
-                (Subcategoria.id_estado == estado_activo_id)
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
             )
             .where(
                 Producto.id_producto == id_producto,
