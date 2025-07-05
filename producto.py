@@ -1,4 +1,4 @@
-# producto.py - VERSIÓN EXPANDIDA CON FILTROS EXTENDIDOS
+# producto.py - VERSIÓN CORREGIDA PARA SQLALCHEMY 2.x
 # ---------------------------
 # Módulo de endpoints REST para gestión de la entidad Producto.
 # Incluye objetos relacionados completos y filtros avanzados
@@ -179,138 +179,142 @@ async def listar_productos(
     """
     Lista productos en estado "activo" con paginación, filtros opcionales extendidos
     y opción de expandir objetos relacionados.
-    
-    ✅ FILTROS SOPORTADOS:
-    - Básicos: nombre, sku, codigo_barras
-    - Precio: exacto, rangos (min/max), comparaciones (>/< y >=/<=)
-    - Entidades relacionadas: búsqueda por nombre en marca, categoría, subcategoría
-    
-    ✅ EJEMPLOS DE USO:
-    - /productos?nombre=iPhone&marca_nombre=Apple
-    - /productos?precio_min=500&precio_max=1000&categoria_nombre=Tecnología
-    - /productos?precio_mayor=300&subcategoria_nombre=Smartphones
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
-    # ===== FUNCIÓN AUXILIAR PARA APLICAR FILTROS =====
-    def aplicar_filtros_basicos(stmt):
-        """Aplica filtros básicos que funcionan tanto con joins como sin joins"""
-        if nombre:
-            stmt = stmt.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            stmt = stmt.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            stmt = stmt.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
-        
-        # ===== FILTROS DE PRECIO =====
-        if precio is not None:
-            stmt = stmt.where(Producto.precio_base == precio)
-        if precio_min is not None:
-            stmt = stmt.where(Producto.precio_base >= precio_min)
-        if precio_max is not None:
-            stmt = stmt.where(Producto.precio_base <= precio_max)
-        if precio_mayor is not None:
-            stmt = stmt.where(Producto.precio_base > precio_mayor)
-        if precio_menor is not None:
-            stmt = stmt.where(Producto.precio_base < precio_menor)
-        if precio_texto:
-            # Búsqueda textual en precio (útil para formatos como "$100.00")
-            stmt = stmt.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
-        
-        return stmt
-    
-    def aplicar_filtros_entidades(stmt):
-        """Aplica filtros por nombres de entidades relacionadas (solo para consultas con joins)"""
-        if marca_nombre:
-            stmt = stmt.where(Marca.nombre.ilike(f"%{marca_nombre}%"))
-        if categoria_nombre:
-            stmt = stmt.where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
-        if subcategoria_nombre:
-            stmt = stmt.where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
-        return stmt
-    
     if expandir:
         # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS =====
-        stmt = (
-            select(
-                Producto,
-                Marca,
-                UMedida,
-                Categoria,
-                Subcategoria
-            )
-            .select_from(Producto)
+        # Crear query base
+        query = select(
+            Producto,
+            Marca,
+            UMedida,
+            Categoria,
+            Subcategoria
+        )
+        
+        # Especificar FROM explícitamente para SQLAlchemy 2.x
+        query = query.select_from(
+            Producto.__table__
             .outerjoin(
-                Marca, 
+                Marca.__table__,
                 and_(
                     Producto.id_marca == Marca.id_marca,
                     Marca.id_estado == estado_activo_id
                 )
             )
             .outerjoin(
-                UMedida, 
+                UMedida.__table__,
                 and_(
                     Producto.id_umedida == UMedida.id_umedida,
                     UMedida.id_estado == estado_activo_id
                 )
             )
             .outerjoin(
-                Categoria, 
+                Categoria.__table__,
                 and_(
                     Producto.id_categoria == Categoria.id_categoria,
                     Categoria.id_estado == estado_activo_id
                 )
             )
             .outerjoin(
-                Subcategoria, 
+                Subcategoria.__table__,
                 and_(
                     Producto.id_subcategoria == Subcategoria.id_subcategoria,
                     Subcategoria.id_estado == estado_activo_id
                 )
             )
-            .where(Producto.id_estado == estado_activo_id)
         )
         
-        # Aplicar todos los filtros
-        stmt = aplicar_filtros_basicos(stmt)
-        stmt = aplicar_filtros_entidades(stmt)
+        # Filtro base
+        query = query.where(Producto.id_estado == estado_activo_id)
         
-        # ===== CONTAR TOTAL PARA PAGINACIÓN (con los mismos filtros) =====
-        count_stmt = (
-            select(func.count(Producto.id_producto))
-            .select_from(
-                Producto
-                .outerjoin(
-                    Marca, 
-                    and_(
-                        Producto.id_marca == Marca.id_marca,
-                        Marca.id_estado == estado_activo_id
-                    )
-                )
-                .outerjoin(
-                    Categoria, 
-                    and_(
-                        Producto.id_categoria == Categoria.id_categoria,
-                        Categoria.id_estado == estado_activo_id
-                    )
-                )
-                .outerjoin(
-                    Subcategoria, 
-                    and_(
-                        Producto.id_subcategoria == Subcategoria.id_subcategoria,
-                        Subcategoria.id_estado == estado_activo_id
-                    )
+        # ===== APLICAR FILTROS BÁSICOS =====
+        if nombre:
+            query = query.where(Producto.nombre.ilike(f"%{nombre}%"))
+        if sku:
+            query = query.where(Producto.sku.ilike(f"%{sku}%"))
+        if codigo_barras:
+            query = query.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
+        
+        # ===== APLICAR FILTROS DE PRECIO =====
+        if precio is not None:
+            query = query.where(Producto.precio_base == precio)
+        if precio_min is not None:
+            query = query.where(Producto.precio_base >= precio_min)
+        if precio_max is not None:
+            query = query.where(Producto.precio_base <= precio_max)
+        if precio_mayor is not None:
+            query = query.where(Producto.precio_base > precio_mayor)
+        if precio_menor is not None:
+            query = query.where(Producto.precio_base < precio_menor)
+        if precio_texto:
+            query = query.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
+        
+        # ===== APLICAR FILTROS DE ENTIDADES RELACIONADAS =====
+        if marca_nombre:
+            query = query.where(Marca.nombre.ilike(f"%{marca_nombre}%"))
+        if categoria_nombre:
+            query = query.where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
+        if subcategoria_nombre:
+            query = query.where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
+        
+        # ===== CONTAR TOTAL PARA PAGINACIÓN =====
+        count_query = select(func.count(Producto.id_producto)).select_from(
+            Producto.__table__
+            .outerjoin(
+                Marca.__table__,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
                 )
             )
-            .where(Producto.id_estado == estado_activo_id)
-        )
-        count_stmt = aplicar_filtros_basicos(count_stmt)
-        count_stmt = aplicar_filtros_entidades(count_stmt)
+            .outerjoin(
+                Categoria.__table__,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Subcategoria.__table__,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            )
+        ).where(Producto.id_estado == estado_activo_id)
         
-        total = await db.scalar(count_stmt)
+        # Aplicar los mismos filtros al count
+        if nombre:
+            count_query = count_query.where(Producto.nombre.ilike(f"%{nombre}%"))
+        if sku:
+            count_query = count_query.where(Producto.sku.ilike(f"%{sku}%"))
+        if codigo_barras:
+            count_query = count_query.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
+        if precio is not None:
+            count_query = count_query.where(Producto.precio_base == precio)
+        if precio_min is not None:
+            count_query = count_query.where(Producto.precio_base >= precio_min)
+        if precio_max is not None:
+            count_query = count_query.where(Producto.precio_base <= precio_max)
+        if precio_mayor is not None:
+            count_query = count_query.where(Producto.precio_base > precio_mayor)
+        if precio_menor is not None:
+            count_query = count_query.where(Producto.precio_base < precio_menor)
+        if precio_texto:
+            count_query = count_query.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
+        if marca_nombre:
+            count_query = count_query.where(Marca.nombre.ilike(f"%{marca_nombre}%"))
+        if categoria_nombre:
+            count_query = count_query.where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
+        if subcategoria_nombre:
+            count_query = count_query.where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
+        
+        total = await db.scalar(count_query)
         
         # Ejecutar consulta paginada
-        result = await db.execute(stmt.offset(skip).limit(limit))
+        result = await db.execute(query.offset(skip).limit(limit))
         
         # ===== CONSTRUIR RESPUESTA EXPANDIDA =====
         data = []
@@ -333,80 +337,112 @@ async def listar_productos(
             data.append(producto_dict)
     
     else:
-        # ===== CONSULTA SIN JOINS (CON JOINS CONDICIONALES PARA FILTROS DE ENTIDADES) =====
-        stmt = select(Producto).where(Producto.id_estado == estado_activo_id)
+        # ===== CONSULTA SIN JOINS (VERSIÓN SIMPLIFICADA) =====
+        query = select(Producto).where(Producto.id_estado == estado_activo_id)
         
         # Aplicar filtros básicos
-        stmt = aplicar_filtros_basicos(stmt)
+        if nombre:
+            query = query.where(Producto.nombre.ilike(f"%{nombre}%"))
+        if sku:
+            query = query.where(Producto.sku.ilike(f"%{sku}%"))
+        if codigo_barras:
+            query = query.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
         
-        # ===== APLICAR FILTROS DE ENTIDADES RELACIONADAS (requieren joins específicos) =====
-        joins_added = []
+        # Aplicar filtros de precio
+        if precio is not None:
+            query = query.where(Producto.precio_base == precio)
+        if precio_min is not None:
+            query = query.where(Producto.precio_base >= precio_min)
+        if precio_max is not None:
+            query = query.where(Producto.precio_base <= precio_max)
+        if precio_mayor is not None:
+            query = query.where(Producto.precio_base > precio_mayor)
+        if precio_menor is not None:
+            query = query.where(Producto.precio_base < precio_menor)
+        if precio_texto:
+            query = query.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
         
+        # Para filtros de entidades relacionadas, agregar joins específicos
         if marca_nombre:
-            stmt = stmt.join(
-                Marca,
+            query = query.join(Marca).where(
                 and_(
                     Producto.id_marca == Marca.id_marca,
-                    Marca.id_estado == estado_activo_id
+                    Marca.id_estado == estado_activo_id,
+                    Marca.nombre.ilike(f"%{marca_nombre}%")
                 )
-            ).where(Marca.nombre.ilike(f"%{marca_nombre}%"))
-            joins_added.append("marca")
+            )
         
         if categoria_nombre:
-            stmt = stmt.join(
-                Categoria,
+            query = query.join(Categoria).where(
                 and_(
                     Producto.id_categoria == Categoria.id_categoria,
-                    Categoria.id_estado == estado_activo_id
+                    Categoria.id_estado == estado_activo_id,
+                    Categoria.nombre.ilike(f"%{categoria_nombre}%")
                 )
-            ).where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
-            joins_added.append("categoria")
+            )
         
         if subcategoria_nombre:
-            stmt = stmt.join(
-                Subcategoria,
+            query = query.join(Subcategoria).where(
                 and_(
                     Producto.id_subcategoria == Subcategoria.id_subcategoria,
-                    Subcategoria.id_estado == estado_activo_id
+                    Subcategoria.id_estado == estado_activo_id,
+                    Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%")
                 )
-            ).where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
-            joins_added.append("subcategoria")
+            )
         
-        # Contar total (replicando los mismos joins y filtros)
-        count_stmt = select(func.count(Producto.id_producto)).where(Producto.id_estado == estado_activo_id)
-        count_stmt = aplicar_filtros_basicos(count_stmt)
+        # Contar total (replicando la misma lógica)
+        count_query = select(func.count(Producto.id_producto)).where(Producto.id_estado == estado_activo_id)
+        
+        if nombre:
+            count_query = count_query.where(Producto.nombre.ilike(f"%{nombre}%"))
+        if sku:
+            count_query = count_query.where(Producto.sku.ilike(f"%{sku}%"))
+        if codigo_barras:
+            count_query = count_query.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
+        if precio is not None:
+            count_query = count_query.where(Producto.precio_base == precio)
+        if precio_min is not None:
+            count_query = count_query.where(Producto.precio_base >= precio_min)
+        if precio_max is not None:
+            count_query = count_query.where(Producto.precio_base <= precio_max)
+        if precio_mayor is not None:
+            count_query = count_query.where(Producto.precio_base > precio_mayor)
+        if precio_menor is not None:
+            count_query = count_query.where(Producto.precio_base < precio_menor)
+        if precio_texto:
+            count_query = count_query.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
         
         if marca_nombre:
-            count_stmt = count_stmt.join(
-                Marca,
+            count_query = count_query.join(Marca).where(
                 and_(
                     Producto.id_marca == Marca.id_marca,
-                    Marca.id_estado == estado_activo_id
+                    Marca.id_estado == estado_activo_id,
+                    Marca.nombre.ilike(f"%{marca_nombre}%")
                 )
-            ).where(Marca.nombre.ilike(f"%{marca_nombre}%"))
+            )
         
         if categoria_nombre:
-            count_stmt = count_stmt.join(
-                Categoria,
+            count_query = count_query.join(Categoria).where(
                 and_(
                     Producto.id_categoria == Categoria.id_categoria,
-                    Categoria.id_estado == estado_activo_id
+                    Categoria.id_estado == estado_activo_id,
+                    Categoria.nombre.ilike(f"%{categoria_nombre}%")
                 )
-            ).where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
+            )
         
         if subcategoria_nombre:
-            count_stmt = count_stmt.join(
-                Subcategoria,
+            count_query = count_query.join(Subcategoria).where(
                 and_(
                     Producto.id_subcategoria == Subcategoria.id_subcategoria,
-                    Subcategoria.id_estado == estado_activo_id
+                    Subcategoria.id_estado == estado_activo_id,
+                    Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%")
                 )
-            ).where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
+            )
         
-        total = await db.scalar(count_stmt)
+        total = await db.scalar(count_query)
         
         # Ejecutar consulta paginada
-        result = await db.execute(stmt.offset(skip).limit(limit))
+        result = await db.execute(query.offset(skip).limit(limit))
         productos = result.scalars().all()
         
         data = [ProductoRead.model_validate(p).model_dump() for p in productos]
@@ -457,51 +493,49 @@ async def obtener_producto(
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
     if expandir:
-        # Consulta con joins
-        stmt = (
-            select(
-                Producto,
-                Marca,
-                UMedida,
-                Categoria,
-                Subcategoria
-            )
-            .select_from(Producto)
+        # Consulta con joins usando tabla base
+        query = select(
+            Producto,
+            Marca,
+            UMedida,
+            Categoria,
+            Subcategoria
+        ).select_from(
+            Producto.__table__
             .outerjoin(
-                Marca, 
+                Marca.__table__,
                 and_(
                     Producto.id_marca == Marca.id_marca,
                     Marca.id_estado == estado_activo_id
                 )
             )
             .outerjoin(
-                UMedida, 
+                UMedida.__table__,
                 and_(
                     Producto.id_umedida == UMedida.id_umedida,
                     UMedida.id_estado == estado_activo_id
                 )
             )
             .outerjoin(
-                Categoria, 
+                Categoria.__table__,
                 and_(
                     Producto.id_categoria == Categoria.id_categoria,
                     Categoria.id_estado == estado_activo_id
                 )
             )
             .outerjoin(
-                Subcategoria, 
+                Subcategoria.__table__,
                 and_(
                     Producto.id_subcategoria == Subcategoria.id_subcategoria,
                     Subcategoria.id_estado == estado_activo_id
                 )
             )
-            .where(
-                Producto.id_producto == id_producto,
-                Producto.id_estado == estado_activo_id
-            )
+        ).where(
+            Producto.id_producto == id_producto,
+            Producto.id_estado == estado_activo_id
         )
         
-        result = await db.execute(stmt)
+        result = await db.execute(query)
         row = result.first()
         
         if not row:
@@ -529,11 +563,11 @@ async def obtener_producto(
     
     else:
         # Consulta normal
-        stmt = select(Producto).where(
+        query = select(Producto).where(
             Producto.id_producto == id_producto,
             Producto.id_estado == estado_activo_id
         )
-        result = await db.execute(stmt)
+        result = await db.execute(query)
         producto = result.scalar_one_or_none()
         
         if not producto:
@@ -593,11 +627,11 @@ async def actualizar_producto(
     Actualiza datos de un producto en estado "activo".
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
-    stmt = select(Producto).where(
+    query = select(Producto).where(
         Producto.id_producto == id_producto,
-        Producto.id_estado    == estado_activo_id
+        Producto.id_estado == estado_activo_id
     )
-    result = await db.execute(stmt)
+    result = await db.execute(query)
     producto = result.scalar_one_or_none()
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
