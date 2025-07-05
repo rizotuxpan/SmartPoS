@@ -11,7 +11,7 @@ from datetime import datetime                                   # Fecha y hora
 from decimal import Decimal                                      # Para campos numéricos de alta precisión
 from sqlalchemy import (
     Column, String, Text, DateTime, Numeric, Boolean, Integer,
-    func, select, text, delete, and_, or_
+    func, select, text, delete, and_, or_, cast
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT  # Tipos PostgreSQL específicos
 from sqlalchemy.ext.asyncio import AsyncSession                 # Sesión asíncrona de SQLAlchemy
@@ -215,7 +215,7 @@ async def listar_productos(
             stmt = stmt.where(Producto.precio_base < precio_menor)
         if precio_texto:
             # Búsqueda textual en precio (útil para formatos como "$100.00")
-            stmt = stmt.where(func.cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
+            stmt = stmt.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
         
         return stmt
     
@@ -239,6 +239,7 @@ async def listar_productos(
                 Categoria,
                 Subcategoria
             )
+            .select_from(Producto)
             .outerjoin(
                 Marca, 
                 and_(
@@ -465,6 +466,7 @@ async def obtener_producto(
                 Categoria,
                 Subcategoria
             )
+            .select_from(Producto)
             .outerjoin(
                 Marca, 
                 and_(
