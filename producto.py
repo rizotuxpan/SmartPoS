@@ -107,9 +107,35 @@ class ProductoCreate(ProductoBase):
     """Esquema para creación; hereda todos los campos base."""
     pass
 
-class ProductoUpdate(ProductoBase):
-    """Esquema para actualización; hereda todos los campos base."""
-    pass
+class ProductoUpdate(BaseModel):
+    """
+    Esquema para actualización con todos los campos opcionales.
+    Solo se actualizarán los campos que se proporcionen.
+    """
+    sku: Optional[str] = None
+    codigo_barras: Optional[str] = None
+    nombre: Optional[str] = None
+    descripcion: Optional[str] = None
+    precio_base: Optional[Decimal] = None
+    es_kit: Optional[bool] = None
+    vida_util_dias: Optional[int] = None
+    id_marca: Optional[UUID] = None
+    id_umedida: Optional[UUID] = None
+    articulo: Optional[str] = None
+    guid: Optional[str] = None
+    costo_u: Optional[Decimal] = None
+    linea: Optional[str] = None
+    sublinea: Optional[str] = None
+    id_categoria: Optional[UUID] = None
+    id_subcategoria: Optional[UUID] = None
+    
+    # Validador personalizado para categoría/subcategoría
+    @model_validator(mode='after')
+    def validate_categoria_subcategoria(self):
+        # Si se proporciona subcategoría sin categoría, está bien
+        # Si se proporciona categoría sin subcategoría, está bien
+        # Si se proporcionan ambos, se validará en el endpoint
+        return self
 
 class ProductoRead(ProductoBase):
     """
@@ -625,38 +651,139 @@ async def actualizar_producto(
 ):
     """
     Actualiza datos de un producto en estado "activo".
+    Maneja correctamente las relaciones de categoría/subcategoría.
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    # Buscar el producto existente
     query = select(Producto).where(
         Producto.id_producto == id_producto,
         Producto.id_estado == estado_activo_id
     )
     result = await db.execute(query)
     producto = result.scalar_one_or_none()
+    
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # Obtener contexto del usuario
     ctx = await obtener_contexto(db)
-    producto.sku             = entrada.sku
-    producto.codigo_barras   = entrada.codigo_barras
-    producto.nombre          = entrada.nombre
-    producto.descripcion     = entrada.descripcion
-    producto.precio_base     = entrada.precio_base
-    producto.es_kit          = entrada.es_kit
-    producto.vida_util_dias  = entrada.vida_util_dias
-    producto.id_marca        = entrada.id_marca
-    producto.id_umedida      = entrada.id_umedida
-    producto.articulo        = entrada.articulo
-    producto.guid            = entrada.guid
-    producto.costo_u         = entrada.costo_u
-    producto.linea           = entrada.linea
-    producto.sublinea        = entrada.sublinea
-    producto.id_categoria    = entrada.id_categoria
-    producto.id_subcategoria = entrada.id_subcategoria
-    producto.modified_by     = ctx["user_id"]
-    await db.flush()
-    await db.refresh(producto)
-    await db.commit()
-    return {"success": True, "data": ProductoRead.model_validate(producto)}
+    
+    # ===== VALIDACIONES ESPECIALES PARA CATEGORÍA/SUBCATEGORÍA =====
+    
+    # Si se proporciona subcategoría, validar que la categoría sea compatible
+    if entrada.id_subcategoria is not None:
+        subcat_query = select(Subcategoria).where(
+            Subcategoria.id_subcategoria == entrada.id_subcategoria,
+            Subcategoria.id_estado == estado_activo_id
+        )
+        subcat_result = await db.execute(subcat_query)
+        subcategoria = subcat_result.scalar_one_or_none()
+        
+        if not subcategoria:
+            raise HTTPException(status_code=400, detail="Subcategoría no encontrada")
+        
+        # Si se proporciona categoría, verificar que coincida con la subcategoría
+        if entrada.id_categoria is not None:
+            if subcategoria.id_categoria != entrada.id_categoria:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="La subcategoría no pertenece a la categoría especificada"
+                )
+        else:
+            # Si no se proporciona categoría, usar la de la subcategoría
+            entrada.id_categoria = subcategoria.id_categoria
+    
+    # Si se proporciona categoría pero no subcategoría, verificar que sea válido
+    elif entrada.id_categoria is not None:
+        cat_query = select(Categoria).where(
+            Categoria.id_categoria == entrada.id_categoria,
+            Categoria.id_estado == estado_activo_id
+        )
+        cat_result = await db.execute(cat_query)
+        categoria = cat_result.scalar_one_or_none()
+        
+        if not categoria:
+            raise HTTPException(status_code=400, detail="Categoría no encontrada")
+    
+    # ===== ACTUALIZAR SOLO LOS CAMPOS PROPORCIONADOS =====
+    
+    # Campos básicos
+    if entrada.sku is not None:
+        producto.sku = entrada.sku
+    if entrada.codigo_barras is not None:
+        producto.codigo_barras = entrada.codigo_barras
+    if entrada.nombre is not None:
+        producto.nombre = entrada.nombre
+    if entrada.descripcion is not None:
+        producto.descripcion = entrada.descripcion
+    
+    # Campos comerciales
+    if entrada.precio_base is not None:
+        producto.precio_base = entrada.precio_base
+    if entrada.es_kit is not None:
+        producto.es_kit = entrada.es_kit
+    if entrada.vida_util_dias is not None:
+        producto.vida_util_dias = entrada.vida_util_dias
+    if entrada.costo_u is not None:
+        producto.costo_u = entrada.costo_u
+    
+    # Relaciones (solo actualizar si se proporcionan)
+    if entrada.id_marca is not None:
+        producto.id_marca = entrada.id_marca
+    if entrada.id_umedida is not None:
+        producto.id_umedida = entrada.id_umedida
+    
+    # ===== MANEJO ESPECIAL DE CATEGORÍA/SUBCATEGORÍA =====
+    # Solo actualizar si al menos uno de los dos se proporciona
+    if entrada.id_categoria is not None or entrada.id_subcategoria is not None:
+        producto.id_categoria = entrada.id_categoria
+        producto.id_subcategoria = entrada.id_subcategoria
+    
+    # Campos adicionales
+    if entrada.articulo is not None:
+        producto.articulo = entrada.articulo
+    if entrada.guid is not None:
+        producto.guid = entrada.guid
+    if entrada.linea is not None:
+        producto.linea = entrada.linea
+    if entrada.sublinea is not None:
+        producto.sublinea = entrada.sublinea
+    
+    # Campos de auditoría
+    producto.modified_by = ctx["user_id"]
+    
+    try:
+        await db.flush()
+        await db.refresh(producto)
+        await db.commit()
+        
+        return {
+            "success": True, 
+            "message": "Producto actualizado correctamente",
+            "data": ProductoRead.model_validate(producto).model_dump()
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        
+        # Manejo específico de errores de constraint
+        if "cat_subcategoria" in str(e):
+            raise HTTPException(
+                status_code=400, 
+                detail="Error de relación entre categoría y subcategoría. Verifica que ambas sean compatibles."
+            )
+        elif "unique" in str(e).lower() or "duplicate" in str(e).lower():
+            raise HTTPException(
+                status_code=409, 
+                detail="Ya existe un producto con ese SKU o código de barras."
+            )
+        else:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error interno del servidor: {str(e)}"
+            )
+
 
 @router.delete("/{id_producto}", status_code=200)
 async def eliminar_producto(
