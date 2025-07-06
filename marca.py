@@ -130,6 +130,20 @@ async def listar_marcas(
         "data": [MarcaRead.model_validate(m) for m in data]
     }
 
+@router.get("/combo", response_model=dict)
+async def listar_marcas_combo(db: AsyncSession = Depends(get_async_db)):
+    """Endpoint optimizado para llenar ComboBox de marcas"""
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    query = select(Marca.id_marca, Marca.nombre).where(
+        Marca.id_estado == estado_activo_id
+    ).order_by(Marca.nombre)
+    
+    result = await db.execute(query)
+    marcas = [{"id": str(row[0]), "nombre": row[1]} for row in result]
+    
+    return {"success": True, "data": marcas}
+
 @router.get("/{id_marca}", response_model=MarcaRead)
 async def obtener_marca(
     id_marca: UUID,
@@ -243,20 +257,3 @@ async def eliminar_marca(id_marca: UUID, db: AsyncSession = Depends(get_async_db
 
     # 4) Responder al cliente
     return {"success": True, "message": "Marca eliminada permanentemente"}
-
-# ===============================================
-# AGREGAR AL FINAL DE marca.py
-# ===============================================
-@router.get("/combo", response_model=dict)
-async def listar_marcas_combo(db: AsyncSession = Depends(get_async_db)):
-    """Endpoint optimizado para llenar ComboBox de marcas"""
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    query = select(Marca.id_marca, Marca.nombre).where(
-        Marca.id_estado == estado_activo_id
-    ).order_by(Marca.nombre)
-    
-    result = await db.execute(query)
-    marcas = [{"id": str(row[0]), "nombre": row[1]} for row in result]
-    
-    return {"success": True, "data": marcas}
