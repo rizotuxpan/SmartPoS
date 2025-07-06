@@ -243,3 +243,20 @@ async def eliminar_umedida(id_umedida: UUID, db: AsyncSession = Depends(get_asyn
 
     # 4) Responder al cliente
     return {"success": True, "message": "Unidad de medida eliminada permanentemente"}
+
+# ===============================================
+# AGREGAR AL FINAL DE umedida.py
+# ===============================================
+@router.get("/combo", response_model=dict)
+async def listar_umedidas_combo(db: AsyncSession = Depends(get_async_db)):
+    """Endpoint optimizado para llenar ComboBox de unidades de medida"""
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    query = select(UMedida.id_umedida, UMedida.nombre).where(
+        UMedida.id_estado == estado_activo_id
+    ).order_by(UMedida.nombre)
+    
+    result = await db.execute(query)
+    umedidas = [{"id": str(row[0]), "nombre": row[1]} for row in result]
+    
+    return {"success": True, "data": umedidas}

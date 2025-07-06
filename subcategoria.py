@@ -264,3 +264,37 @@ async def listar_subcategorias_por_categoria(
         "total_count": total,
         "data": [SubcategoriaRead.model_validate(s) for s in data]
     }
+
+
+# ===============================================
+# AGREGAR AL FINAL DE subcategoria.py
+# ===============================================
+@router.get("/combo", response_model=dict)
+async def listar_subcategorias_combo(
+    id_categoria: Optional[UUID] = Query(None, description="Filtrar por categoría"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Endpoint optimizado para llenar ComboBox de subcategorías con filtro opcional por categoría"""
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    query = select(
+        Subcategoria.id_subcategoria, 
+        Subcategoria.nombre,
+        Subcategoria.id_categoria
+    ).where(Subcategoria.id_estado == estado_activo_id)
+    
+    if id_categoria:
+        query = query.where(Subcategoria.id_categoria == id_categoria)
+    
+    query = query.order_by(Subcategoria.nombre)
+    
+    result = await db.execute(query)
+    subcategorias = [
+        {
+            "id": str(row[0]), 
+            "nombre": row[1],
+            "id_categoria": str(row[2])
+        } for row in result
+    ]
+    
+    return {"success": True, "data": subcategorias}
