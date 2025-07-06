@@ -4,6 +4,7 @@
 # Usando SQLAlchemy Async y FastAPI para inyectar variables de sesión.
 # ---------------------------
 
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from uuid import UUID
@@ -15,11 +16,11 @@ from sqlalchemy import text
 
 # URL de conexión a la base de datos PostgreSQL.
 # Incluye usuario, contraseña, host, puerto y nombre de la base.
-db_user = os.getenv("DB_USER", "smartuser")
+db_user = os.getenv("DB_USER")
 db_password = os.getenv("DB_PASSWORD")
-db_host = os.getenv("DB_HOST", "localhost")
-db_port = os.getenv("DB_PORT", "5432")
-db_name = os.getenv("DB_NAME", "smart_db")
+db_host = os.getenv("DB_HOST")
+db_port = os.getenv("DB_PORT")
+db_name = os.getenv("DB_NAME")
 
 if not db_password:
     raise ValueError("Se requiere DB_PASSWORD")
