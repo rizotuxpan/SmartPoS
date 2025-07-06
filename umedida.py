@@ -130,6 +130,20 @@ async def listar_umedida(
         "data": [UMedidaRead.model_validate(m) for m in data]
     }
 
+@router.get("/combo", response_model=dict)
+async def listar_umedidas_combo(db: AsyncSession = Depends(get_async_db)):
+    """Endpoint optimizado para llenar ComboBox de unidades de medida"""
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    query = select(UMedida.id_umedida, UMedida.nombre).where(
+        UMedida.id_estado == estado_activo_id
+    ).order_by(UMedida.nombre)
+    
+    result = await db.execute(query)
+    umedidas = [{"id": str(row[0]), "nombre": row[1]} for row in result]
+    
+    return {"success": True, "data": umedidas}
+
 @router.get("/{id_umedida}", response_model=UMedidaRead)
 async def obtener_umedida(
     id_umedida: UUID,
@@ -186,20 +200,6 @@ async def crear_umedida(
 
     # 5) Devolver datos completos
     return {"success": True, "data": UMedidaRead.model_validate(nueva)}
-
-@router.get("/combo", response_model=dict)
-async def listar_umedidas_combo(db: AsyncSession = Depends(get_async_db)):
-    """Endpoint optimizado para llenar ComboBox de unidades de medida"""
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    query = select(UMedida.id_umedida, UMedida.nombre).where(
-        UMedida.id_estado == estado_activo_id
-    ).order_by(UMedida.nombre)
-    
-    result = await db.execute(query)
-    umedidas = [{"id": str(row[0]), "nombre": row[1]} for row in result]
-    
-    return {"success": True, "data": umedidas}
 
 @router.put("/{id_umedida}", response_model=dict)
 async def actualizar_umedida(
