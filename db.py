@@ -15,8 +15,17 @@ from sqlalchemy import text
 
 # URL de conexión a la base de datos PostgreSQL.
 # Incluye usuario, contraseña, host, puerto y nombre de la base.
+db_user = os.getenv("DB_USER", "smartuser")
+db_password = os.getenv("DB_PASSWORD")
+db_host = os.getenv("DB_HOST", "localhost")
+db_port = os.getenv("DB_PORT", "5432")
+db_name = os.getenv("DB_NAME", "smart_db")
+
+if not db_password:
+    raise ValueError("Se requiere DB_PASSWORD")
+
 DATABASE_URL = (
-    "postgresql+asyncpg://tpv_app:T3lerin2025.,--!@localhost:5432/tpv_mt"
+    f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 )
 
 # ---------------------------
