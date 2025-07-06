@@ -58,11 +58,8 @@ class Producto(Base):
     vida_util_dias = Column(Integer)
     id_marca       = Column(PG_UUID(as_uuid=True))
     id_umedida     = Column(PG_UUID(as_uuid=True))
-    articulo       = Column(String(20))
     guid           = Column(String(36))
-    costo_u        = Column(Numeric(14, 2))
-    linea          = Column(String(100))
-    sublinea       = Column(String(100))
+    costo_u        = Column(Numeric(14, 2))    
     id_categoria   = Column(PG_UUID(as_uuid=True))
     id_subcategoria= Column(PG_UUID(as_uuid=True))
     created_by     = Column(PG_UUID(as_uuid=True), nullable=False)
@@ -94,12 +91,9 @@ class ProductoBase(BaseModel):
     es_kit: Optional[bool] = None
     vida_util_dias: Optional[int] = None
     id_marca: Optional[UUID] = None
-    id_umedida: Optional[UUID] = None
-    articulo: Optional[str] = None
+    id_umedida: Optional[UUID] = None    
     guid: Optional[str] = None
-    costo_u: Optional[Decimal] = None
-    linea: Optional[str] = None
-    sublinea: Optional[str] = None
+    costo_u: Optional[Decimal] = None    
     id_categoria: Optional[UUID] = None
     id_subcategoria: Optional[UUID] = None
 
@@ -120,12 +114,9 @@ class ProductoUpdate(BaseModel):
     es_kit: Optional[bool] = None
     vida_util_dias: Optional[int] = None
     id_marca: Optional[UUID] = None
-    id_umedida: Optional[UUID] = None
-    articulo: Optional[str] = None
+    id_umedida: Optional[UUID] = None    
     guid: Optional[str] = None
-    costo_u: Optional[Decimal] = None
-    linea: Optional[str] = None
-    sublinea: Optional[str] = None
+    costo_u: Optional[Decimal] = None    
     id_categoria: Optional[UUID] = None
     id_subcategoria: Optional[UUID] = None
     
@@ -623,12 +614,9 @@ async def crear_producto(
         es_kit          = entrada.es_kit,
         vida_util_dias  = entrada.vida_util_dias,
         id_marca        = entrada.id_marca,
-        id_umedida      = entrada.id_umedida,
-        articulo        = entrada.articulo,
+        id_umedida      = entrada.id_umedida,        
         guid            = entrada.guid,
-        costo_u         = entrada.costo_u,
-        linea           = entrada.linea,
-        sublinea        = entrada.sublinea,
+        costo_u         = entrada.costo_u,        
         id_categoria    = entrada.id_categoria,
         id_subcategoria = entrada.id_subcategoria,
         created_by      = ctx["user_id"],
@@ -738,15 +726,9 @@ async def actualizar_producto(
         producto.id_categoria = entrada.id_categoria
         producto.id_subcategoria = entrada.id_subcategoria
     
-    # Campos adicionales
-    if entrada.articulo is not None:
-        producto.articulo = entrada.articulo
+    # Campos adicionales    
     if entrada.guid is not None:
-        producto.guid = entrada.guid
-    if entrada.linea is not None:
-        producto.linea = entrada.linea
-    if entrada.sublinea is not None:
-        producto.sublinea = entrada.sublinea
+        producto.guid = entrada.guid    
     
     # Campos de auditoría
     producto.modified_by = ctx["user_id"]
