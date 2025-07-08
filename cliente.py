@@ -175,3 +175,5 @@ async def eliminar_cliente(id_cliente: UUID, session: AsyncSession = Depends(get
     await session.delete(cliente)
     await session.commit()
     return { "ok": True }
+
+get_async_session = get_async_db
