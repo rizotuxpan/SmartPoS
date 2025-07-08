@@ -6,7 +6,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy import Column, String, Text, select, func, text, DateTime, and_
@@ -20,7 +20,7 @@ from entidad import Entidad
 from municipio import Municipio, Localidad, LocalidadRead
 
 # ---------------------------
-# Modelo ORM
+# Modelos ORM
 # ---------------------------
 class Cliente(Base):
     __tablename__ = "cliente"
@@ -61,14 +61,13 @@ class Cliente(Base):
 # Schemas Pydantic
 # ---------------------------
 class EntidadSlim(BaseModel):
-    cve_ent: str
+    cvegeo: str
     nomgeo: str
 
     model_config = {"from_attributes": True}
 
 class MunicipioSlim(BaseModel):
-    cve_ent: str
-    cve_mun: str
+    cvegeo: str
     nomgeo: str
 
     model_config = {"from_attributes": True}
@@ -116,7 +115,7 @@ class ClienteRead(ClienteBase):
 router = APIRouter()
 
 async def _cargar_relaciones(cli: Cliente, db: AsyncSession):
-    # Carga entidad
+    # CORRECCIÓN: usar cve_ent, no cvegeo
     if cli.cve_ent:
         ent = await db.scalar(
             select(Entidad).where(Entidad.cve_ent == cli.cve_ent)
@@ -124,7 +123,6 @@ async def _cargar_relaciones(cli: Cliente, db: AsyncSession):
         if ent:
             cli.entidad = ent
 
-    # Carga municipio
     if cli.cve_ent and cli.cve_mun:
         muni = await db.scalar(
             select(Municipio).where(and_(
@@ -135,7 +133,6 @@ async def _cargar_relaciones(cli: Cliente, db: AsyncSession):
         if muni:
             cli.municipio_obj = muni
 
-    # Carga localidad
     if cli.cve_ent and cli.cve_mun and cli.cve_loc:
         loc = await db.scalar(
             select(Localidad).where(and_(
@@ -158,13 +155,12 @@ async def listar_clientes(
     db: AsyncSession = Depends(get_async_db)
 ):
     estado_activo = await get_estado_id_por_clave("act", db)
-    base_q = select(Cliente).where(Cliente.id_estado == estado_activo)
+    stmt = select(Cliente).where(Cliente.id_estado == estado_activo)
     if nombre:
-        base_q = base_q.where(Cliente.nombre.ilike(f"%{nombre}%"))
+        stmt = stmt.where(Cliente.nombre.ilike(f"%{nombre}%"))
 
-    total = await db.scalar(select(func.count()).select_from(base_q.subquery()))
-    items = (await db.execute(base_q.offset(skip).limit(limit))).scalars().all()
-
+    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
+    items = (await db.execute(stmt.offset(skip).limit(limit))).scalars().all()
     for cli in items:
         await _cargar_relaciones(cli, db)
 
@@ -198,8 +194,6 @@ async def crear_cliente(
     db: AsyncSession = Depends(get_async_db)
 ):
     ctx = await obtener_contexto(db)
-
-    # Validar localidad si se proporcionan claves INEGI
     if datos.cve_ent and datos.cve_mun and datos.cve_loc:
         existe = await db.scalar(
             select(Localidad).where(and_(
@@ -240,10 +234,9 @@ async def actualizar_cliente(
     if not cli:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-    for key, val in cambios.dict(exclude_unset=True).items():
-        setattr(cli, key, val)
+    for k, v in cambios.dict(exclude_unset=True).items():
+        setattr(cli, k, v)
     cli.modified_by = (await obtener_contexto(db))['user_id']
-
     await db.flush()
     await _cargar_relaciones(cli, db)
     await db.commit()
@@ -264,7 +257,6 @@ async def borrar_cliente(
     )
     if not cli:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
-
     await db.delete(cli)
     await db.commit()
     return {"success": True, "message": "Cliente eliminado permanentemente"}
