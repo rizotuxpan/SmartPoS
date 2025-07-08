@@ -160,8 +160,7 @@ Depends(get_async_db)):
     cli = await db.scalar(select(Cliente).where(Cliente.id_cliente == 
 id_cliente, Cliente.id_estado == estado_activo))
     if not cli:
-        raise HTTPException(status_code=404, detail="Cliente no 
-encontrado")
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
     await _cargar_relaciones(cli, db)
     return ClienteRead.model_validate(cli)
 
@@ -178,8 +177,7 @@ Depends(get_async_db)):
             Localidad.cve_loc == datos.cve_loc
         )))
         if not existe:
-            raise HTTPException(status_code=400, detail="Claves INEGI 
-inválidas")
+            raise HTTPException(status_code=400, detail="Claves INEGI inválidas")
 
     nuevo = Cliente(**datos.dict(exclude_unset=True),
                     created_by=ctx['user_id'],
@@ -198,8 +196,7 @@ AsyncSession = Depends(get_async_db)):
     cli = await db.scalar(select(Cliente).where(Cliente.id_cliente == 
 id_cliente, Cliente.id_estado == estado_activo))
     if not cli:
-        raise HTTPException(status_code=404, detail="Cliente no 
-encontrado")
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
     for k, v in cambios.dict(exclude_unset=True).items():
         setattr(cli, k, v)
@@ -217,10 +214,7 @@ Depends(get_async_db)):
     cli = await db.scalar(select(Cliente).where(Cliente.id_cliente == 
 id_cliente, Cliente.id_estado == estado_activo))
     if not cli:
-        raise HTTPException(status_code=404, detail="Cliente no 
-encontrado")
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
     await db.delete(cli)
     await db.commit()
-    return {"success": True, "message": "Cliente eliminado 
-permanentemente"}
-
+    return {"success": True, "message": "Cliente eliminado permanentemente"}
