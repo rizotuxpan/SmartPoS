@@ -11,8 +11,8 @@ from uuid import UUID
 from datetime import datetime
 from sqlalchemy import select, update, delete, insert, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.db import get_async_session
-from app.auth import get_current_user_id
+from db import get_async_session
+from auth import get_current_user_id
 from models import cliente as models
 from models.regimenfiscal import RegimenFiscal
 from models.localidad import Localidad
