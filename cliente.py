@@ -144,8 +144,7 @@ async def listar_clientes(nombre: Optional[str] = Query(None), skip: int =
     stmt = select(Cliente).where(Cliente.id_estado == estado_activo)
     if nombre:
         stmt = stmt.where(Cliente.nombre.ilike(f"%{nombre}%"))
-    total = await 
-db.scalar(select(func.count()).select_from(stmt.subquery()))
+    total = await db.scalar(select(func.count()).select_from(stmt.subquery()))
     items = (await 
 db.execute(stmt.offset(skip).limit(limit))).scalars().all()
     for cli in items:
