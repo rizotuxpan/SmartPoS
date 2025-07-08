@@ -7,53 +7,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel
 from typing import List
-from sqlalchemy import Column, String, select, ForeignKey, ForeignKeyConstraint
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import relationship
 
-from db import Base, get_async_db
-
-# ----------------------
-# Modelos ORM SQLAlchemy
-# ----------------------
-class Entidad(Base):
-    __tablename__ = "entidad"
-
-    cve_ent = Column(String(2), primary_key=True)
-    nomgeo = Column(String(100), nullable=False)
-
-    # Relación con municipios
-    municipios = relationship("Municipio", back_populates="entidad")
-
-class Municipio(Base):
-    __tablename__ = "municipio"
-
-    cve_ent = Column(String(2), ForeignKey('entidad.cve_ent'), primary_key=True)
-    cve_mun = Column(String(4), primary_key=True)
-    nomgeo = Column(String(100), nullable=False)
-
-    # Relaciones
-    entidad = relationship("Entidad", back_populates="municipios")
-    localidades = relationship("Localidad", back_populates="municipio")
-
-class Localidad(Base):
-    __tablename__ = "localidad"
-
-    cve_ent = Column(String(2), primary_key=True)
-    cve_mun = Column(String(4), primary_key=True)
-    cve_loc = Column(String(5), primary_key=True)
-    nomgeo = Column(String(100), nullable=False)
-
-    # Relación con municipio
-    municipio = relationship("Municipio", back_populates="localidades")
-
-    # Foreign key constraint compuesta
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ['cve_ent', 'cve_mun'], 
-            ['municipio.cve_ent', 'municipio.cve_mun']
-        ),
-    )
+from db import get_async_db
+from entidad import Entidad
+from municipio import Municipio, Localidad
 
 # -------------------------
 # Schemas Pydantic
@@ -139,16 +98,14 @@ async def listar_municipios_por_entidad(
     """
     # Verificar que la entidad existe
     stmt_ent = select(Entidad).where(Entidad.cve_ent == cve_ent)
-    result_ent = await db.execute(stmt_ent)
-    entidad = result_ent.scalar_one_or_none()
+    entidad = (await db.execute(stmt_ent)).scalar_one_or_none()
 
     if not entidad:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
     # Obtener municipios
     stmt_mun = select(Municipio).where(Municipio.cve_ent == cve_ent)
-    result_mun = await db.execute(stmt_mun)
-    municipios = result_mun.scalars().all()
+    municipios = (await db.execute(stmt_mun)).scalars().all()
 
     return {
         "success": True,
@@ -168,8 +125,7 @@ async def obtener_municipio_especifico(
         Municipio.cve_ent == cve_ent,
         Municipio.cve_mun == cve_mun
     )
-    result = await db.execute(stmt)
-    municipio = result.scalar_one_or_none()
+    municipio = (await db.execute(stmt)).scalar_one_or_none()
 
     if not municipio:
         raise HTTPException(status_code=404, detail="Municipio no encontrado")
@@ -190,8 +146,7 @@ async def listar_localidades_por_municipio(
         Municipio.cve_ent == cve_ent,
         Municipio.cve_mun == cve_mun
     )
-    result_mun = await db.execute(stmt_mun)
-    municipio = result_mun.scalar_one_or_none()
+    municipio = (await db.execute(stmt_mun)).scalar_one_or_none()
 
     if not municipio:
         raise HTTPException(status_code=404, detail="Municipio no encontrado")
@@ -201,8 +156,7 @@ async def listar_localidades_por_municipio(
         Localidad.cve_ent == cve_ent,
         Localidad.cve_mun == cve_mun
     )
-    result_loc = await db.execute(stmt_loc)
-    localidades = result_loc.scalars().all()
+    localidades = (await db.execute(stmt_loc)).scalars().all()
 
     return {
         "success": True,
@@ -222,8 +176,7 @@ async def buscar_entidades(
     Busca entidades por nombre (búsqueda parcial, insensible a mayúsculas).
     """
     stmt = select(Entidad).where(Entidad.nomgeo.ilike(f"%{q}%"))
-    result = await db.execute(stmt)
-    entidades = result.scalars().all()
+    entidades = (await db.execute(stmt)).scalars().all()
 
     return {
         "success": True,
@@ -241,8 +194,7 @@ async def buscar_municipios_por_entidad(
     """
     # Verificar que la entidad existe
     stmt_ent = select(Entidad).where(Entidad.cve_ent == cve_ent)
-    result_ent = await db.execute(stmt_ent)
-    entidad = result_ent.scalar_one_or_none()
+    entidad = (await db.execute(stmt_ent)).scalar_one_or_none()
 
     if not entidad:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
@@ -252,8 +204,7 @@ async def buscar_municipios_por_entidad(
         Municipio.cve_ent == cve_ent,
         Municipio.nomgeo.ilike(f"%{q}%")
     )
-    result = await db.execute(stmt)
-    municipios = result.scalars().all()
+    municipios = (await db.execute(stmt)).scalars().all()
 
     return {
         "success": True,
@@ -275,8 +226,7 @@ async def buscar_localidades_por_municipio(
         Municipio.cve_ent == cve_ent,
         Municipio.cve_mun == cve_mun
     )
-    result_mun = await db.execute(stmt_mun)
-    municipio = result_mun.scalar_one_or_none()
+    municipio = (await db.execute(stmt_mun)).scalar_one_or_none()
 
     if not municipio:
         raise HTTPException(status_code=404, detail="Municipio no encontrado")
@@ -287,8 +237,7 @@ async def buscar_localidades_por_municipio(
         Localidad.cve_mun == cve_mun,
         Localidad.nomgeo.ilike(f"%{q}%")
     )
-    result = await db.execute(stmt)
-    localidades = result.scalars().all()
+    localidades = (await db.execute(stmt)).scalars().all()
 
     return {
         "success": True,
