@@ -13,10 +13,10 @@ from sqlalchemy import select, update, delete, insert, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_async_session
 from auth import get_current_user_id
-from models import cliente as models
-from models.regimenfiscal import RegimenFiscal
-from models.localidad import Localidad
-from models.cat_estado import CatEstado
+import cliente as models
+from regimenfiscal import RegimenFiscal
+from localidad import Localidad
+from cat_estado import CatEstado
 
 router = APIRouter(prefix="/clientes", tags=["Clientes"])
 
