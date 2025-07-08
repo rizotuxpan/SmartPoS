@@ -16,7 +16,7 @@ from auth import get_current_user_id
 import cliente as models
 from regimenfiscal import RegimenFiscal
 from localidad import Localidad
-from cat_estado import CatEstado
+from geografia import Entidad
 
 router = APIRouter(prefix="/clientes", tags=["Clientes"])
 
@@ -175,5 +175,3 @@ async def eliminar_cliente(id_cliente: UUID, session: AsyncSession = Depends(get
     await session.delete(cliente)
     await session.commit()
     return { "ok": True }
-
-get_async_session = get_async_db

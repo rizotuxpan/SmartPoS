@@ -97,3 +97,5 @@ async def get_async_db(
         # Ceder la sesión al endpoint
         yield db
     # Al salir del async with, la sesión se cierra automáticamente
+
+get_async_session = get_async_db
