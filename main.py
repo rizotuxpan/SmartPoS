@@ -13,7 +13,7 @@ from subcategoria import router as subcategoria_router   # subcategoria.py
 from empresa      import router as empresa_router        # empresa.py
 from sucursal     import router as sucursal_router       # sucursal.py
 from almacen      import router as almacen_router        # almacen.py
-# from cliente      import router as cliente_router        # cliente.py
+from cliente      import router as cliente_router        # cliente.py
 from producto     import router as producto_router       # producto.py
 from terminal     import router as terminal_router       # terminal.py
 from eml          import router as eml_router            # eml.py
@@ -79,11 +79,11 @@ app.include_router(
     tags=["Almacenes"]                     # Etiqueta para organizar la documentación de OpenAPI
 )
 
-#app.include_router(
-#    cliente_router,                        # Router importado de cliente.py
-#    prefix="/clientes",                    # Todas las rutas definidas en ese router irán bajo /clientes
-#    tags=["Clientes"]                      # Etiqueta para organizar la documentación de OpenAPI
-#)
+app.include_router(
+    cliente_router,                        # Router importado de cliente.py
+    prefix="/clientes",                    # Todas las rutas definidas en ese router irán bajo /clientes
+    tags=["Clientes"]                      # Etiqueta para organizar la documentación de OpenAPI
+)
 
 app.include_router(
     producto_router,                        # Router importado de producto.py
