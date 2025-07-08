@@ -4,7 +4,8 @@
 # -----------------------------------------------
 
 from fastapi import FastAPI                              # Importa la clase principal de FastAPI
-                                                         # Importa endpoints definidos en:
+
+# Importa routers definidos en sus respectivos módulos
 from marca        import router as marcas_router         # marca.py
 from forma_pago   import router as formas_pago_router    # forma_pago.py
 from categoria    import router as categorias_router     # categoria.py
@@ -16,7 +17,7 @@ from almacen      import router as almacen_router        # almacen.py
 from cliente      import router as cliente_router        # cliente.py
 from producto     import router as producto_router       # producto.py
 from terminal     import router as terminal_router       # terminal.py
-from eml          import router as eml_router            # eml.py
+from eml          import router as entidades_router      # eml.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -28,86 +29,82 @@ app = FastAPI(
 # -------------------------------------------
 # Inclusión de routers (módulos de endpoints)
 # -------------------------------------------
-# Aquí montamos el router de marcas bajo el prefijo /marcas
-# - prefix: ruta base para todos los endpoints del router
-# - tags: agrupa en la UI de documentación las operaciones bajo "Marcas"
 app.include_router(
-    marcas_router,                         # Router importado de marca.py
-    prefix="/marcas",                      # Todas las rutas definidas en ese router irán bajo /marcas
-    tags=["Marcas"]                        # Etiqueta para organizar la documentación de OpenAPI
+    marcas_router,
+    prefix="/marcas",
+    tags=["Marcas"]
 )
 
 app.include_router(
-    formas_pago_router,                    # Router importado de marca.py
-    prefix="/formas_pago",                 # Todas las rutas definidas en ese router irán bajo /formas_pago
-    tags=["Formas de Pago"]                # Etiqueta para organizar la documentación de OpenAPI
+    formas_pago_router,
+    prefix="/formas_pago",
+    tags=["Formas de Pago"]
 )
 
 app.include_router(
-    categorias_router,                     # Router importado de categoria.py
-    prefix="/categorias",                  # Todas las rutas definidas en ese router irán bajo /categorias
-    tags=["Categorias de Productos"]       # Etiqueta para organizar la documentación de OpenAPI
+    categorias_router,
+    prefix="/categorias",
+    tags=["Categorias de Productos"]
 )
 
 app.include_router(
-    umedida_router,                        # Router importado de umedida.py
-    prefix="/umedidas",                    # Todas las rutas definidas en ese router irán bajo /umedidas
-    tags=["Unidades de medida"]            # Etiqueta para organizar la documentación de OpenAPI
+    umedida_router,
+    prefix="/umedidas",
+    tags=["Unidades de medida"]
 )
 
 app.include_router(
-    subcategoria_router,                   # Router importado de subcategoria.py
-    prefix="/subcategorias",               # Todas las rutas definidas en ese router irán bajo /subcategorias
-    tags=["Sub Categorías de Productos"]   # Etiqueta para organizar la documentación de OpenAPI
+    subcategoria_router,
+    prefix="/subcategorias",
+    tags=["Sub Categorías de Productos"]
 )
 
 app.include_router(
-    empresa_router,                        # Router importado de empresa.py
-    prefix="/empresas",                    # Todas las rutas definidas en ese router irán bajo /empresas
-    tags=["Empresas"]                      # Etiqueta para organizar la documentación de OpenAPI
+    empresa_router,
+    prefix="/empresas",
+    tags=["Empresas"]
 )
 
 app.include_router(
-    sucursal_router,                       # Router importado de sucursal.py
-    prefix="/sucursales",                  # Todas las rutas definidas en ese router irán bajo /sucursales
-    tags=["Sucursales"]                    # Etiqueta para organizar la documentación de OpenAPI
+    sucursal_router,
+    prefix="/sucursales",
+    tags=["Sucursales"]
 )
 
 app.include_router(
-    almacen_router,                        # Router importado de almacen.py
-    prefix="/almacenes",                   # Todas las rutas definidas en ese router irán bajo /almacenes
-    tags=["Almacenes"]                     # Etiqueta para organizar la documentación de OpenAPI
+    almacen_router,
+    prefix="/almacenes",
+    tags=["Almacenes"]
 )
 
 app.include_router(
-    cliente_router,                        # Router importado de cliente.py
-    prefix="/clientes",                    # Todas las rutas definidas en ese router irán bajo /clientes
-    tags=["Clientes"]                      # Etiqueta para organizar la documentación de OpenAPI
+    cliente_router,
+    prefix="/clientes",
+    tags=["Clientes"]
 )
 
 app.include_router(
-    producto_router,                        # Router importado de producto.py
-    prefix="/productos",                    # Todas las rutas definidas en ese router irán bajo /productos
-    tags=["Productos"]                      # Etiqueta para organizar la documentación de OpenAPI
+    producto_router,
+    prefix="/productos",
+    tags=["Productos"]
 )
 
 app.include_router(
-    terminal_router,                        # Router importado de terminal.py
-    prefix="/terminales",                   # Todas las rutas definidas en ese router irán bajo /terminales
-    tags=["Terminales"]                     # Etiqueta para organizar la documentación de OpenAPI
+    terminal_router,
+    prefix="/terminales",
+    tags=["Terminales"]
 )
 
 app.include_router(
-    eml_router,                                   # Router importado de entidad.py
-    prefix="/eml",                                # Todas las rutas definidas en ese router irán bajo /entidades
-    tags=["Entidades, Municipios y Localidades"]  # Etiqueta para organizar la documentación de OpenAPI
+    entidades_router,
+    prefix="/entidades",
+    tags=["Entidades, Municipios y Localidades"]
 )
-
 
 # ---------------------------
 # Endpoint raíz
 # ---------------------------
-@app.get("/")                           # Define un GET en la ruta raíz '/'
-async def root():                       # Función asíncrona que maneja la petición
-    # Retorna un mensaje JSON simple para verificar que el servicio esté en línea
+@app.get("/")
+async def root():
+    """Retorna un mensaje simple para verificar que el servicio esté en línea"""
     return {"Welcome": "SmartPoS 2025"}
