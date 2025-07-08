@@ -111,7 +111,7 @@ class ClienteRead(ClienteBase):
 # ---------------------------
 # Router y utilidades
 # ---------------------------
-router = APIRouter(prefix="/clientes", tags=["Clientes"])
+router = APIRouter()
 
 async def _cargar_relaciones(cli: Cliente, db: AsyncSession):
     if cli.cve_ent:
