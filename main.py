@@ -18,6 +18,7 @@ from cliente      import router as cliente_router        # cliente.py
 from producto     import router as producto_router       # producto.py
 from terminal     import router as terminal_router       # terminal.py
 from eml          import router as entidades_router      # eml.py
+from regimen_fiscal import router as regimenfiscal_router  # regimen_fiscal.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -99,6 +100,12 @@ app.include_router(
     entidades_router,
     prefix="/entidades",
     tags=["Entidades, Municipios y Localidades"]
+)
+
+app.include_router(
+    regimenfiscal_router,
+    prefix="/regimen_fiscal",
+    tags=["Regimen Fiscal"]
 )
 
 # ---------------------------
