@@ -6,19 +6,19 @@
 from fastapi import FastAPI                              # Importa la clase principal de FastAPI
 
 # Importa routers definidos en sus respectivos módulos
-from marca        import router as marcas_router         # marca.py
-from forma_pago   import router as formas_pago_router    # forma_pago.py
-from categoria    import router as categorias_router     # categoria.py
-from umedida      import router as umedida_router        # umedida.py
-from subcategoria import router as subcategoria_router   # subcategoria.py
-from empresa      import router as empresa_router        # empresa.py
-from sucursal     import router as sucursal_router       # sucursal.py
-from almacen      import router as almacen_router        # almacen.py
-from cliente      import router as cliente_router        # cliente.py
-from producto     import router as producto_router       # producto.py
-from terminal     import router as terminal_router       # terminal.py
-from eml          import router as entidades_router      # eml.py
-from regimen_fiscal import router as regimenfiscal_router  # regimen_fiscal.py
+from marca         import router as marcas_router         # marca.py
+from forma_pago    import router as formas_pago_router    # forma_pago.py
+from categoria     import router as categorias_router     # categoria.py
+from umedida       import router as umedida_router        # umedida.py
+from subcategoria  import router as subcategoria_router   # subcategoria.py
+from empresa       import router as empresa_router        # empresa.py
+from sucursal      import router as sucursal_router       # sucursal.py
+from almacen       import router as almacen_router        # almacen.py
+from cliente       import router as cliente_router        # cliente.py
+from producto      import router as producto_router       # producto.py
+from terminal      import router as terminal_router       # terminal.py
+from eml           import router as entidades_router      # eml.py
+from regimenfiscal import router as regimenfiscal_router  # regimenfiscal.py
 
 # -------------------------------
 # Inicialización de la aplicación
