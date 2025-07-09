@@ -25,7 +25,7 @@ from utils.contexto import obtener_contexto  # IMPORTANTE
 
 # ===== IMPORTAR MODELOS Y ESQUEMAS RELACIONADOS =====
 from geografia import Entidad, Municipio, Localidad
-from regimenfiscal import RegimenFiscal, RegimenFiscalRead
+from regimenfiscal import RegimenFiscal
 
 # --------------------------------------
 # Definición del modelo ORM (SQLAlchemy)
@@ -160,6 +160,12 @@ class LocalidadRead(BaseModel):
     cve_mun: str
     cve_loc: str
     nomgeo: str
+    model_config = {"from_attributes": True}
+
+# ===== ESQUEMA PARA RÉGIMEN FISCAL =====
+class RegimenFiscalRead(BaseModel):
+    id_regimenfiscal: str
+    descripcion: str
     model_config = {"from_attributes": True}
 
 # ===== ESQUEMA EXPANDIDO =====
