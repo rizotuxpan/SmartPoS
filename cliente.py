@@ -165,7 +165,13 @@ class LocalidadRead(BaseModel):
 # ===== ESQUEMA PARA RÉGIMEN FISCAL =====
 class RegimenFiscalRead(BaseModel):
     id_regimenfiscal: str
-    descripcion: str
+    nombre: str
+    id_empresa: UUID
+    id_estado: UUID
+    created_at: datetime
+    updated_at: datetime
+    created_by: UUID
+    modified_by: UUID
     model_config = {"from_attributes": True}
 
 # ===== ESQUEMA EXPANDIDO =====
@@ -290,7 +296,7 @@ async def listar_clientes(
     if localidad_nombre:
         query = query.where(Localidad.nomgeo.ilike(f"%{localidad_nombre}%"))
     if regimen_fiscal_nombre:
-        query = query.where(RegimenFiscal.descripcion.ilike(f"%{regimen_fiscal_nombre}%"))
+        query = query.where(RegimenFiscal.nombre.ilike(f"%{regimen_fiscal_nombre}%"))
     
     # ===== CONTAR TOTAL PARA PAGINACIÓN =====
     count_query = select(func.count(Cliente.id_cliente)).select_from(
@@ -344,7 +350,7 @@ async def listar_clientes(
     if localidad_nombre:
         count_query = count_query.where(Localidad.nomgeo.ilike(f"%{localidad_nombre}%"))
     if regimen_fiscal_nombre:
-        count_query = count_query.where(RegimenFiscal.descripcion.ilike(f"%{regimen_fiscal_nombre}%"))
+        count_query = count_query.where(RegimenFiscal.nombre.ilike(f"%{regimen_fiscal_nombre}%"))
     
     total = await db.scalar(count_query)
     
