@@ -2,6 +2,7 @@
 # ---------------------------
 # Módulo de endpoints REST para gestión de la entidad Cliente.
 # Incluye objetos relacionados completos y filtros avanzados
+# VERSIÓN SIMPLIFICADA: Siempre retorna objetos expandidos
 
 from fastapi import APIRouter, Depends, HTTPException, Query    # FastAPI para rutas y dependencias
 from pydantic import BaseModel, model_validator, EmailStr      # Pydantic para schemas de entrada/salida
@@ -54,9 +55,6 @@ class Cliente(Base):
     telefono        = Column(String(30))
     domicilio       = Column(Text)
     cp              = Column(String(20))
-    municipio       = Column(String(100))  # Campo texto adicional
-    guid            = Column(String(36))
-    clave           = Column(String(50))
     cve_ent         = Column(CHAR(2))
     cve_mun         = Column(String(4))
     cve_loc         = Column(String(5))
@@ -90,9 +88,6 @@ class ClienteBase(BaseModel):
     telefono: Optional[str] = None
     domicilio: Optional[str] = None
     cp: Optional[str] = None
-    municipio: Optional[str] = None
-    guid: Optional[str] = None
-    clave: Optional[str] = None
     cve_ent: Optional[str] = None
     cve_mun: Optional[str] = None
     cve_loc: Optional[str] = None
@@ -115,9 +110,6 @@ class ClienteUpdate(BaseModel):
     telefono: Optional[str] = None
     domicilio: Optional[str] = None
     cp: Optional[str] = None
-    municipio: Optional[str] = None
-    guid: Optional[str] = None
-    clave: Optional[str] = None
     cve_ent: Optional[str] = None
     cve_mun: Optional[str] = None
     cve_loc: Optional[str] = None
@@ -170,7 +162,7 @@ class LocalidadRead(BaseModel):
     nomgeo: str
     model_config = {"from_attributes": True}
 
-# ===== NUEVO ESQUEMA EXPANDIDO =====
+# ===== ESQUEMA EXPANDIDO =====
 class ClienteReadExpanded(ClienteBase):
     """
     Esquema de lectura expandido con objetos relacionados completos.
@@ -214,292 +206,168 @@ async def listar_clientes(
     localidad_nombre: Optional[str] = Query(None, description="Filtro por nombre de localidad"),
     regimen_fiscal_nombre: Optional[str] = Query(None, description="Filtro por nombre de régimen fiscal"),
     
-    # ===== PARÁMETROS DE CONFIGURACIÓN =====
-    expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
+    # ===== PARÁMETROS DE PAGINACIÓN =====
     skip: int = Query(0, ge=0, description="Número de registros a omitir"),
     limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros a retornar"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
     Lista clientes en estado "activo" con paginación, filtros opcionales extendidos
-    y opción de expandir objetos relacionados.
+    y objetos relacionados completos.
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
-    if expandir:
-        # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS =====
-        # Crear query base
-        query = select(
-            Cliente,
-            Entidad,
-            Municipio,
-            Localidad,
-            RegimenFiscal
-        )
-        
-        # Especificar FROM explícitamente para SQLAlchemy 2.x
-        query = query.select_from(
-            Cliente.__table__
-            .outerjoin(
-                Entidad.__table__,
-                Cliente.cve_ent == Entidad.cve_ent
-            )
-            .outerjoin(
-                Municipio.__table__,
-                and_(
-                    Cliente.cve_ent == Municipio.cve_ent,
-                    Cliente.cve_mun == Municipio.cve_mun
-                )
-            )
-            .outerjoin(
-                Localidad.__table__,
-                and_(
-                    Cliente.cve_ent == Localidad.cve_ent,
-                    Cliente.cve_mun == Localidad.cve_mun,
-                    Cliente.cve_loc == Localidad.cve_loc
-                )
-            )
-            .outerjoin(
-                RegimenFiscal.__table__,
-                Cliente.id_regimenfiscal == RegimenFiscal.id_regimenfiscal
-            )
-        )
-        
-        # Filtro base
-        query = query.where(Cliente.id_estado == estado_activo_id)
-        
-        # ===== APLICAR FILTROS BÁSICOS =====
-        if nombre:
-            query = query.where(Cliente.nombre.ilike(f"%{nombre}%"))
-        if apellido:
-            query = query.where(Cliente.apellido.ilike(f"%{apellido}%"))
-        if razon_social:
-            query = query.where(Cliente.razon_social.ilike(f"%{razon_social}%"))
-        if rfc:
-            query = query.where(Cliente.rfc.ilike(f"%{rfc}%"))
-        if telefono:
-            query = query.where(Cliente.telefono.ilike(f"%{telefono}%"))
-        if email:
-            query = query.where(Cliente.email.ilike(f"%{email}%"))
-        if domicilio:
-            query = query.where(Cliente.domicilio.ilike(f"%{domicilio}%"))
-        if cp:
-            query = query.where(Cliente.cp.ilike(f"%{cp}%"))
-        
-        # ===== APLICAR FILTROS DE ENTIDADES RELACIONADAS =====
-        if entidad_nombre:
-            query = query.where(Entidad.nomgeo.ilike(f"%{entidad_nombre}%"))
-        if municipio_nombre:
-            query = query.where(Municipio.nomgeo.ilike(f"%{municipio_nombre}%"))
-        if localidad_nombre:
-            query = query.where(Localidad.nomgeo.ilike(f"%{localidad_nombre}%"))
-        if regimen_fiscal_nombre:
-            query = query.where(RegimenFiscal.descripcion.ilike(f"%{regimen_fiscal_nombre}%"))
-        
-        # ===== CONTAR TOTAL PARA PAGINACIÓN =====
-        count_query = select(func.count(Cliente.id_cliente)).select_from(
-            Cliente.__table__
-            .outerjoin(
-                Entidad.__table__,
-                Cliente.cve_ent == Entidad.cve_ent
-            )
-            .outerjoin(
-                Municipio.__table__,
-                and_(
-                    Cliente.cve_ent == Municipio.cve_ent,
-                    Cliente.cve_mun == Municipio.cve_mun
-                )
-            )
-            .outerjoin(
-                Localidad.__table__,
-                and_(
-                    Cliente.cve_ent == Localidad.cve_ent,
-                    Cliente.cve_mun == Localidad.cve_mun,
-                    Cliente.cve_loc == Localidad.cve_loc
-                )
-            )
-            .outerjoin(
-                RegimenFiscal.__table__,
-                Cliente.id_regimenfiscal == RegimenFiscal.id_regimenfiscal
-            )
-        ).where(Cliente.id_estado == estado_activo_id)
-        
-        # Aplicar los mismos filtros al count
-        if nombre:
-            count_query = count_query.where(Cliente.nombre.ilike(f"%{nombre}%"))
-        if apellido:
-            count_query = count_query.where(Cliente.apellido.ilike(f"%{apellido}%"))
-        if razon_social:
-            count_query = count_query.where(Cliente.razon_social.ilike(f"%{razon_social}%"))
-        if rfc:
-            count_query = count_query.where(Cliente.rfc.ilike(f"%{rfc}%"))
-        if telefono:
-            count_query = count_query.where(Cliente.telefono.ilike(f"%{telefono}%"))
-        if email:
-            count_query = count_query.where(Cliente.email.ilike(f"%{email}%"))
-        if domicilio:
-            count_query = count_query.where(Cliente.domicilio.ilike(f"%{domicilio}%"))
-        if cp:
-            count_query = count_query.where(Cliente.cp.ilike(f"%{cp}%"))
-        if entidad_nombre:
-            count_query = count_query.where(Entidad.nomgeo.ilike(f"%{entidad_nombre}%"))
-        if municipio_nombre:
-            count_query = count_query.where(Municipio.nomgeo.ilike(f"%{municipio_nombre}%"))
-        if localidad_nombre:
-            count_query = count_query.where(Localidad.nomgeo.ilike(f"%{localidad_nombre}%"))
-        if regimen_fiscal_nombre:
-            count_query = count_query.where(RegimenFiscal.descripcion.ilike(f"%{regimen_fiscal_nombre}%"))
-        
-        total = await db.scalar(count_query)
-        
-        # Ejecutar consulta paginada
-        result = await db.execute(query.offset(skip).limit(limit))
-        
-        # ===== CONSTRUIR RESPUESTA EXPANDIDA =====
-        data = []
-        for row in result:
-            cliente_obj = row[0]      # Objeto Cliente
-            entidad_obj = row[1]      # Objeto Entidad (puede ser None)
-            municipio_obj = row[2]    # Objeto Municipio (puede ser None)
-            localidad_obj = row[3]    # Objeto Localidad (puede ser None)
-            regimen_obj = row[4]      # Objeto RegimenFiscal (puede ser None)
-            
-            # Convertir cliente base
-            cliente_dict = ClienteRead.model_validate(cliente_obj).model_dump()
-            
-            # Agregar objetos relacionados si existen
-            cliente_dict['entidad'] = EntidadRead.model_validate(entidad_obj).model_dump() if entidad_obj else None
-            cliente_dict['municipio_obj'] = MunicipioRead.model_validate(municipio_obj).model_dump() if municipio_obj else None
-            cliente_dict['localidad'] = LocalidadRead.model_validate(localidad_obj).model_dump() if localidad_obj else None
-            cliente_dict['regimen_fiscal'] = RegimenFiscalRead.model_validate(regimen_obj).model_dump() if regimen_obj else None
-            
-            data.append(cliente_dict)
+    # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS =====
+    # Crear query base
+    query = select(
+        Cliente,
+        Entidad,
+        Municipio,
+        Localidad,
+        RegimenFiscal
+    )
     
-    else:
-        # ===== CONSULTA SIN JOINS (VERSIÓN SIMPLIFICADA) =====
-        query = select(Cliente).where(Cliente.id_estado == estado_activo_id)
-        
-        # Aplicar filtros básicos
-        if nombre:
-            query = query.where(Cliente.nombre.ilike(f"%{nombre}%"))
-        if apellido:
-            query = query.where(Cliente.apellido.ilike(f"%{apellido}%"))
-        if razon_social:
-            query = query.where(Cliente.razon_social.ilike(f"%{razon_social}%"))
-        if rfc:
-            query = query.where(Cliente.rfc.ilike(f"%{rfc}%"))
-        if telefono:
-            query = query.where(Cliente.telefono.ilike(f"%{telefono}%"))
-        if email:
-            query = query.where(Cliente.email.ilike(f"%{email}%"))
-        if domicilio:
-            query = query.where(Cliente.domicilio.ilike(f"%{domicilio}%"))
-        if cp:
-            query = query.where(Cliente.cp.ilike(f"%{cp}%"))
-        
-        # Para filtros de entidades relacionadas, agregar joins específicos
-        if entidad_nombre:
-            query = query.join(Entidad).where(
-                and_(
-                    Cliente.cve_ent == Entidad.cve_ent,
-                    Entidad.nomgeo.ilike(f"%{entidad_nombre}%")
-                )
+    # Especificar FROM explícitamente para SQLAlchemy 2.x
+    query = query.select_from(
+        Cliente.__table__
+        .outerjoin(
+            Entidad.__table__,
+            Cliente.cve_ent == Entidad.cve_ent
+        )
+        .outerjoin(
+            Municipio.__table__,
+            and_(
+                Cliente.cve_ent == Municipio.cve_ent,
+                Cliente.cve_mun == Municipio.cve_mun
             )
-        
-        if municipio_nombre:
-            query = query.join(Municipio).where(
-                and_(
-                    Cliente.cve_ent == Municipio.cve_ent,
-                    Cliente.cve_mun == Municipio.cve_mun,
-                    Municipio.nomgeo.ilike(f"%{municipio_nombre}%")
-                )
+        )
+        .outerjoin(
+            Localidad.__table__,
+            and_(
+                Cliente.cve_ent == Localidad.cve_ent,
+                Cliente.cve_mun == Localidad.cve_mun,
+                Cliente.cve_loc == Localidad.cve_loc
             )
-        
-        if localidad_nombre:
-            query = query.join(Localidad).where(
-                and_(
-                    Cliente.cve_ent == Localidad.cve_ent,
-                    Cliente.cve_mun == Localidad.cve_mun,
-                    Cliente.cve_loc == Localidad.cve_loc,
-                    Localidad.nomgeo.ilike(f"%{localidad_nombre}%")
-                )
+        )
+        .outerjoin(
+            RegimenFiscal.__table__,
+            Cliente.id_regimenfiscal == RegimenFiscal.id_regimenfiscal
+        )
+    )
+    
+    # Filtro base
+    query = query.where(Cliente.id_estado == estado_activo_id)
+    
+    # ===== APLICAR FILTROS BÁSICOS =====
+    if nombre:
+        query = query.where(Cliente.nombre.ilike(f"%{nombre}%"))
+    if apellido:
+        query = query.where(Cliente.apellido.ilike(f"%{apellido}%"))
+    if razon_social:
+        query = query.where(Cliente.razon_social.ilike(f"%{razon_social}%"))
+    if rfc:
+        query = query.where(Cliente.rfc.ilike(f"%{rfc}%"))
+    if telefono:
+        query = query.where(Cliente.telefono.ilike(f"%{telefono}%"))
+    if email:
+        query = query.where(Cliente.email.ilike(f"%{email}%"))
+    if domicilio:
+        query = query.where(Cliente.domicilio.ilike(f"%{domicilio}%"))
+    if cp:
+        query = query.where(Cliente.cp.ilike(f"%{cp}%"))
+    
+    # ===== APLICAR FILTROS DE ENTIDADES RELACIONADAS =====
+    if entidad_nombre:
+        query = query.where(Entidad.nomgeo.ilike(f"%{entidad_nombre}%"))
+    if municipio_nombre:
+        query = query.where(Municipio.nomgeo.ilike(f"%{municipio_nombre}%"))
+    if localidad_nombre:
+        query = query.where(Localidad.nomgeo.ilike(f"%{localidad_nombre}%"))
+    if regimen_fiscal_nombre:
+        query = query.where(RegimenFiscal.descripcion.ilike(f"%{regimen_fiscal_nombre}%"))
+    
+    # ===== CONTAR TOTAL PARA PAGINACIÓN =====
+    count_query = select(func.count(Cliente.id_cliente)).select_from(
+        Cliente.__table__
+        .outerjoin(
+            Entidad.__table__,
+            Cliente.cve_ent == Entidad.cve_ent
+        )
+        .outerjoin(
+            Municipio.__table__,
+            and_(
+                Cliente.cve_ent == Municipio.cve_ent,
+                Cliente.cve_mun == Municipio.cve_mun
             )
-        
-        if regimen_fiscal_nombre:
-            query = query.join(RegimenFiscal).where(
-                and_(
-                    Cliente.id_regimenfiscal == RegimenFiscal.id_regimenfiscal,
-                    RegimenFiscal.descripcion.ilike(f"%{regimen_fiscal_nombre}%")
-                )
+        )
+        .outerjoin(
+            Localidad.__table__,
+            and_(
+                Cliente.cve_ent == Localidad.cve_ent,
+                Cliente.cve_mun == Localidad.cve_mun,
+                Cliente.cve_loc == Localidad.cve_loc
             )
+        )
+        .outerjoin(
+            RegimenFiscal.__table__,
+            Cliente.id_regimenfiscal == RegimenFiscal.id_regimenfiscal
+        )
+    ).where(Cliente.id_estado == estado_activo_id)
+    
+    # Aplicar los mismos filtros al count
+    if nombre:
+        count_query = count_query.where(Cliente.nombre.ilike(f"%{nombre}%"))
+    if apellido:
+        count_query = count_query.where(Cliente.apellido.ilike(f"%{apellido}%"))
+    if razon_social:
+        count_query = count_query.where(Cliente.razon_social.ilike(f"%{razon_social}%"))
+    if rfc:
+        count_query = count_query.where(Cliente.rfc.ilike(f"%{rfc}%"))
+    if telefono:
+        count_query = count_query.where(Cliente.telefono.ilike(f"%{telefono}%"))
+    if email:
+        count_query = count_query.where(Cliente.email.ilike(f"%{email}%"))
+    if domicilio:
+        count_query = count_query.where(Cliente.domicilio.ilike(f"%{domicilio}%"))
+    if cp:
+        count_query = count_query.where(Cliente.cp.ilike(f"%{cp}%"))
+    if entidad_nombre:
+        count_query = count_query.where(Entidad.nomgeo.ilike(f"%{entidad_nombre}%"))
+    if municipio_nombre:
+        count_query = count_query.where(Municipio.nomgeo.ilike(f"%{municipio_nombre}%"))
+    if localidad_nombre:
+        count_query = count_query.where(Localidad.nomgeo.ilike(f"%{localidad_nombre}%"))
+    if regimen_fiscal_nombre:
+        count_query = count_query.where(RegimenFiscal.descripcion.ilike(f"%{regimen_fiscal_nombre}%"))
+    
+    total = await db.scalar(count_query)
+    
+    # Ejecutar consulta paginada
+    result = await db.execute(query.offset(skip).limit(limit))
+    
+    # ===== CONSTRUIR RESPUESTA EXPANDIDA =====
+    data = []
+    for row in result:
+        cliente_obj   = row[0]    # Objeto Cliente
+        entidad_obj   = row[1]    # Objeto Entidad (puede ser None)
+        municipio_obj = row[2]    # Objeto Municipio (puede ser None)
+        localidad_obj = row[3]    # Objeto Localidad (puede ser None)
+        regimen_obj   = row[4]    # Objeto RegimenFiscal (puede ser None)
         
-        # Contar total (replicando la misma lógica)
-        count_query = select(func.count(Cliente.id_cliente)).where(Cliente.id_estado == estado_activo_id)
+        # Convertir cliente base
+        cliente_dict = ClienteRead.model_validate(cliente_obj).model_dump()
         
-        if nombre:
-            count_query = count_query.where(Cliente.nombre.ilike(f"%{nombre}%"))
-        if apellido:
-            count_query = count_query.where(Cliente.apellido.ilike(f"%{apellido}%"))
-        if razon_social:
-            count_query = count_query.where(Cliente.razon_social.ilike(f"%{razon_social}%"))
-        if rfc:
-            count_query = count_query.where(Cliente.rfc.ilike(f"%{rfc}%"))
-        if telefono:
-            count_query = count_query.where(Cliente.telefono.ilike(f"%{telefono}%"))
-        if email:
-            count_query = count_query.where(Cliente.email.ilike(f"%{email}%"))
-        if domicilio:
-            count_query = count_query.where(Cliente.domicilio.ilike(f"%{domicilio}%"))
-        if cp:
-            count_query = count_query.where(Cliente.cp.ilike(f"%{cp}%"))
+        # Agregar objetos relacionados si existen
+        cliente_dict['entidad'] = EntidadRead.model_validate(entidad_obj).model_dump() if entidad_obj else None
+        cliente_dict['municipio_obj'] = MunicipioRead.model_validate(municipio_obj).model_dump() if municipio_obj else None
+        cliente_dict['localidad'] = LocalidadRead.model_validate(localidad_obj).model_dump() if localidad_obj else None
+        cliente_dict['regimen_fiscal'] = RegimenFiscalRead.model_validate(regimen_obj).model_dump() if regimen_obj else None
         
-        if entidad_nombre:
-            count_query = count_query.join(Entidad).where(
-                and_(
-                    Cliente.cve_ent == Entidad.cve_ent,
-                    Entidad.nomgeo.ilike(f"%{entidad_nombre}%")
-                )
-            )
-        
-        if municipio_nombre:
-            count_query = count_query.join(Municipio).where(
-                and_(
-                    Cliente.cve_ent == Municipio.cve_ent,
-                    Cliente.cve_mun == Municipio.cve_mun,
-                    Municipio.nomgeo.ilike(f"%{municipio_nombre}%")
-                )
-            )
-        
-        if localidad_nombre:
-            count_query = count_query.join(Localidad).where(
-                and_(
-                    Cliente.cve_ent == Localidad.cve_ent,
-                    Cliente.cve_mun == Localidad.cve_mun,
-                    Cliente.cve_loc == Localidad.cve_loc,
-                    Localidad.nomgeo.ilike(f"%{localidad_nombre}%")
-                )
-            )
-        
-        if regimen_fiscal_nombre:
-            count_query = count_query.join(RegimenFiscal).where(
-                and_(
-                    Cliente.id_regimenfiscal == RegimenFiscal.id_regimenfiscal,
-                    RegimenFiscal.descripcion.ilike(f"%{regimen_fiscal_nombre}%")
-                )
-            )
-        
-        total = await db.scalar(count_query)
-        
-        # Ejecutar consulta paginada
-        result = await db.execute(query.offset(skip).limit(limit))
-        clientes = result.scalars().all()
-        
-        data = [ClienteRead.model_validate(c).model_dump() for c in clientes]
+        data.append(cliente_dict)
 
     return {
         "success": True,
         "total_count": total,
-        "expandido": expandir,
         "filtros_aplicados": {
             "basicos": {
                 "nombre": nombre,
@@ -531,95 +399,74 @@ async def listar_clientes(
 @router.get("/{id_cliente}", response_model=dict)
 async def obtener_cliente(
     id_cliente: UUID,
-    expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Obtiene un cliente por su ID, con opción de expandir objetos relacionados.
+    Obtiene un cliente por su ID con objetos relacionados completos.
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
-    if expandir:
-        # Consulta con joins usando tabla base
-        query = select(
-            Cliente,
-            Entidad,
-            Municipio,
-            Localidad,
-            RegimenFiscal
-        ).select_from(
-            Cliente.__table__
-            .outerjoin(
-                Entidad.__table__,
-                Cliente.cve_ent == Entidad.cve_ent
-            )
-            .outerjoin(
-                Municipio.__table__,
-                and_(
-                    Cliente.cve_ent == Municipio.cve_ent,
-                    Cliente.cve_mun == Municipio.cve_mun
-                )
-            )
-            .outerjoin(
-                Localidad.__table__,
-                and_(
-                    Cliente.cve_ent == Localidad.cve_ent,
-                    Cliente.cve_mun == Localidad.cve_mun,
-                    Cliente.cve_loc == Localidad.cve_loc
-                )
-            )
-            .outerjoin(
-                RegimenFiscal.__table__,
-                Cliente.id_regimenfiscal == RegimenFiscal.id_regimenfiscal
-            )
-        ).where(
-            Cliente.id_cliente == id_cliente,
-            Cliente.id_estado == estado_activo_id
+    # Consulta con joins usando tabla base
+    query = select(
+        Cliente,
+        Entidad,
+        Municipio,
+        Localidad,
+        RegimenFiscal
+    ).select_from(
+        Cliente.__table__
+        .outerjoin(
+            Entidad.__table__,
+            Cliente.cve_ent == Entidad.cve_ent
         )
-        
-        result = await db.execute(query)
-        row = result.first()
-        
-        if not row:
-            raise HTTPException(status_code=404, detail="Cliente no encontrado")
-        
-        # Construir respuesta expandida
-        cliente_obj = row[0]
-        entidad_obj = row[1]
-        municipio_obj = row[2]
-        localidad_obj = row[3]
-        regimen_obj = row[4]
-        
-        cliente_dict = ClienteRead.model_validate(cliente_obj).model_dump()
-        
-        cliente_dict['entidad'] = EntidadRead.model_validate(entidad_obj).model_dump() if entidad_obj else None
-        cliente_dict['municipio_obj'] = MunicipioRead.model_validate(municipio_obj).model_dump() if municipio_obj else None
-        cliente_dict['localidad'] = LocalidadRead.model_validate(localidad_obj).model_dump() if localidad_obj else None
-        cliente_dict['regimen_fiscal'] = RegimenFiscalRead.model_validate(regimen_obj).model_dump() if regimen_obj else None
-        
-        return {
-            "success": True,
-            "expandido": True,
-            "data": cliente_dict
-        }
+        .outerjoin(
+            Municipio.__table__,
+            and_(
+                Cliente.cve_ent == Municipio.cve_ent,
+                Cliente.cve_mun == Municipio.cve_mun
+            )
+        )
+        .outerjoin(
+            Localidad.__table__,
+            and_(
+                Cliente.cve_ent == Localidad.cve_ent,
+                Cliente.cve_mun == Localidad.cve_mun,
+                Cliente.cve_loc == Localidad.cve_loc
+            )
+        )
+        .outerjoin(
+            RegimenFiscal.__table__,
+            Cliente.id_regimenfiscal == RegimenFiscal.id_regimenfiscal
+        )
+    ).where(
+        Cliente.id_cliente == id_cliente,
+        Cliente.id_estado == estado_activo_id
+    )
     
-    else:
-        # Consulta normal
-        query = select(Cliente).where(
-            Cliente.id_cliente == id_cliente,
-            Cliente.id_estado == estado_activo_id
-        )
-        result = await db.execute(query)
-        cliente = result.scalar_one_or_none()
-        
-        if not cliente:
-            raise HTTPException(status_code=404, detail="Cliente no encontrado")
-        
-        return {
-            "success": True,
-            "expandido": False,
-            "data": ClienteRead.model_validate(cliente).model_dump()
-        }
+    result = await db.execute(query)
+    row = result.first()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    
+    # Construir respuesta expandida
+    cliente_obj = row[0]
+    entidad_obj = row[1]
+    municipio_obj = row[2]
+    localidad_obj = row[3]
+    regimen_obj = row[4]
+    
+    cliente_dict = ClienteRead.model_validate(cliente_obj).model_dump()
+    
+    cliente_dict['entidad'] = EntidadRead.model_validate(entidad_obj).model_dump() if entidad_obj else None
+    cliente_dict['municipio_obj'] = MunicipioRead.model_validate(municipio_obj).model_dump() if municipio_obj else None
+    cliente_dict['localidad'] = LocalidadRead.model_validate(localidad_obj).model_dump() if localidad_obj else None
+    cliente_dict['regimen_fiscal'] = RegimenFiscalRead.model_validate(regimen_obj).model_dump() if regimen_obj else None
+    
+    return {
+        "success": True,
+        "data": cliente_dict
+    }
 
 @router.post("/", response_model=dict, status_code=201)
 async def crear_cliente(
@@ -681,9 +528,6 @@ async def crear_cliente(
         telefono         = entrada.telefono,
         domicilio        = entrada.domicilio,
         cp               = entrada.cp,
-        municipio        = entrada.municipio,
-        guid             = entrada.guid,
-        clave            = entrada.clave,
         cve_ent          = entrada.cve_ent,
         cve_mun          = entrada.cve_mun,
         cve_loc          = entrada.cve_loc,
@@ -830,12 +674,6 @@ async def actualizar_cliente(
         cliente.domicilio = entrada.domicilio
     if entrada.cp is not None:
         cliente.cp = entrada.cp
-    if entrada.municipio is not None:
-        cliente.municipio = entrada.municipio
-    if entrada.guid is not None:
-        cliente.guid = entrada.guid
-    if entrada.clave is not None:
-        cliente.clave = entrada.clave
     
     # Campos geográficos
     if entrada.cve_ent is not None:
