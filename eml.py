@@ -63,6 +63,16 @@ async def listar_entidades(db: AsyncSession = Depends(get_async_db)):
     entidades = result.scalars().all()
     return {"success": True, "data": [EntidadRead.model_validate(e) for e in entidades]}
 
+@router.get("/entidad/combo", response_model=dict, summary="Combo de entidades")
+async def listar_entidades_combo(db: AsyncSession = Depends(get_async_db)):
+    """Endpoint optimizado para llenar ComboBox de entidades"""
+    query = select(Entidad.cve_ent, Entidad.nomgeo).order_by(Entidad.nomgeo)
+    
+    result = await db.execute(query)
+    entidades = [{"id": row[0], "nombre": row[1]} for row in result]
+    
+    return {"success": True, "data": entidades}
+
 @router.get("/entidad/{cve_ent}", response_model=EntidadNomgeoRead, summary="Obtener nombre de una entidad")
 async def obtener_nomgeo_entidad(
     cve_ent: str = Path(..., min_length=2, max_length=2, description="Clave de la entidad"),
@@ -84,9 +94,29 @@ async def listar_municipios_por_entidad(
     if not exist:
         raise HTTPException(status_code=404, detail="Entidad no encontrada")
 
-    stmt = select(Municipio).where(Municipio.cve_ent == cve_ent)
+    stmt = select(Municipio).where(Municipio.cve_ent == cve_ent).order_by(Municipio.nomgeo)
     municipios = (await db.execute(stmt)).scalars().all()
     return {"success": True, "data": [MunicipioRead.model_validate(m) for m in municipios]}
+
+@router.get("/entidad/{cve_ent}/municipio/combo", response_model=dict, summary="Combo de municipios")
+async def listar_municipios_combo(
+    cve_ent: str = Path(..., min_length=2, max_length=2, description="Clave de la entidad"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Endpoint optimizado para llenar ComboBox de municipios"""
+    # Verificar existencia de entidad
+    exist = (await db.execute(select(Entidad).where(Entidad.cve_ent == cve_ent))).scalar_one_or_none()
+    if not exist:
+        raise HTTPException(status_code=404, detail="Entidad no encontrada")
+    
+    query = select(Municipio.cve_mun, Municipio.nomgeo).where(
+        Municipio.cve_ent == cve_ent
+    ).order_by(Municipio.nomgeo)
+    
+    result = await db.execute(query)
+    municipios = [{"id": row[0], "nombre": row[1]} for row in result]
+    
+    return {"success": True, "data": municipios}
 
 @router.get("/entidad/{cve_ent}/municipio/{cve_mun}", response_model=MunicipioRead, summary="Obtener datos de un municipio")
 async def obtener_municipio_especifico(
@@ -120,9 +150,34 @@ async def listar_localidades_por_municipio(
     stmt = select(Localidad).where(
         Localidad.cve_ent == cve_ent,
         Localidad.cve_mun == cve_mun
-    )
+    ).order_by(Localidad.nomgeo)
     localidades = (await db.execute(stmt)).scalars().all()
     return {"success": True, "data": [LocalidadRead.model_validate(l) for l in localidades]}
+
+@router.get("/entidad/{cve_ent}/municipio/{cve_mun}/localidad/combo", response_model=dict, summary="Combo de localidades")
+async def listar_localidades_combo(
+    cve_ent: str = Path(..., min_length=2, max_length=2, description="Clave de la entidad"),
+    cve_mun: str = Path(..., min_length=1, max_length=4, description="Clave del municipio"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Endpoint optimizado para llenar ComboBox de localidades"""
+    # Verificar existencia de municipio
+    exist = (await db.execute(select(Municipio).where(
+        Municipio.cve_ent == cve_ent,
+        Municipio.cve_mun == cve_mun
+    ))).scalar_one_or_none()
+    if not exist:
+        raise HTTPException(status_code=404, detail="Municipio no encontrado")
+    
+    query = select(Localidad.cve_loc, Localidad.nomgeo).where(
+        Localidad.cve_ent == cve_ent,
+        Localidad.cve_mun == cve_mun
+    ).order_by(Localidad.nomgeo)
+    
+    result = await db.execute(query)
+    localidades = [{"id": row[0], "nombre": row[1]} for row in result]
+    
+    return {"success": True, "data": localidades}
 
 # ---------------------------
 # Endpoints de búsqueda
