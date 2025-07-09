@@ -98,7 +98,7 @@ app.include_router(
 
 app.include_router(
     entidades_router,
-    prefix="/entidades",
+    prefix="/eml",
     tags=["Entidades, Municipios y Localidades"]
 )
 
