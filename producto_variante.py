@@ -3,26 +3,19 @@
 # Módulo de endpoints REST para gestión de Variantes de Productos.
 # Incluye filtros avanzados y opción de expandir objetos relacionados.
 
-from fastapi import APIRouter, Depends, HTTPException, Query    # FastAPI 
-para rutas y dependencias
-from pydantic import BaseModel, model_validator                 # 
-Pydantic para schemas de entrada/salida
-from typing import Optional                                     # Tipos 
-para anotaciones
-from uuid import UUID                                           # UUID 
-para identificadores únicos
-from datetime import datetime                                   # Fecha y 
-hora
-from decimal import Decimal                                     # Para 
-campos numéricos de alta precisión
+from fastapi import APIRouter, Depends, HTTPException, Query    # FastAPI para rutas y dependencias
+from pydantic import BaseModel, model_validator                 # Pydantic para schemas de entrada/salida
+from typing import Optional                                     # Tipos para anotaciones
+from uuid import UUID                                           # UUID para identificadores únicos
+from datetime import datetime                                   # Fecha y hora
+from decimal import Decimal                                     # Para campos numéricos de alta precisión
 from sqlalchemy import (
     Column, String, Numeric, Integer, DateTime, func, select, text, 
     delete, and_, or_, cast, join
 )
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT  # 
 Tipos PostgreSQL específicos
-from sqlalchemy.ext.asyncio import AsyncSession                 # Sesión 
-asíncrona de SQLAlchemy
+from sqlalchemy.ext.asyncio import AsyncSession                 # Sesión asíncrona de SQLAlchemy
 
 # Importa base de modelos y función de sesión configurada con RLS
 from db import Base, get_async_db
