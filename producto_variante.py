@@ -328,8 +328,7 @@ async def listar_variantes(
 
 @router.get("/combo", response_model=dict)
 async def listar_variantes_combo(
-    id_producto: Optional[UUID] = Query(None, description="Filtro por 
-producto padre"),
+    id_producto: Optional[UUID] = Query(None, description="Filtro por producto padre"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """Endpoint optimizado para llenar ComboBox de variantes de productos"""
