@@ -119,14 +119,12 @@ class ProductoVarianteRead(ProductoVarianteBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}  # Permitir conversión desde 
-objeto ORM
+    model_config = {"from_attributes": True}  # Permitir conversión desde objeto ORM
 
 # ===== ESQUEMA EXPANDIDO =====
 class ProductoVarianteReadExpanded(ProductoVarianteBase):
     """
-    Esquema de lectura expandido con objeto producto relacionado 
-completo.
+    Esquema de lectura expandido con objeto producto relacionado completo.
     """
     id_producto_variante: UUID
     id_empresa: UUID
