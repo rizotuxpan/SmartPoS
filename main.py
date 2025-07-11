@@ -19,7 +19,11 @@ from producto      import router as producto_router       # producto.py
 from terminal      import router as terminal_router       # terminal.py
 from eml           import router as entidades_router      # eml.py
 from regimenfiscal import router as regimenfiscal_router  # regimenfiscal.py
-
+from inventario import router as inventario_router
+from venta import router as venta_router
+from venta_detalle import router as venta_detalle_router
+from pago import router as pago_router
+from producto_variante import router as producto_variante_router
 # -------------------------------
 # Inicialización de la aplicación
 # -------------------------------
@@ -108,10 +112,41 @@ app.include_router(
     tags=["Regimen Fiscal"]
 )
 
+# Incluir los routers
+app.include_router(
+    inventario_router,
+    prefix="/inventario",
+    tags=["Inventario"]
+)
+
+app.include_router(
+    venta_router,
+    prefix="/ventas",
+    tags=["Ventas"]
+)
+
+app.include_router(
+    venta_detalle_router,
+    prefix="/venta-detalles",
+    tags=["Detalle de Ventas"]
+)
+
+app.include_router(
+    pago_router,
+    prefix="/pagos",
+    tags=["Pagos de Ventas"]
+)
+
+app.include_router(
+    producto_variante_router,
+    prefix="/variantes",
+    tags=["Variantes de Productos"]
+)
+
 # ---------------------------
 # Endpoint raíz
 # ---------------------------
 @app.get("/")
 async def root():
     """Retorna un mensaje simple para verificar que el servicio esté en línea"""
-    return {"Welcome": "SmartPoS 2025"}
+    return {"ID": "MEGAVENTAS 2025"}
