@@ -42,8 +42,7 @@ server_default=text("f_default_estatus_activo()"))
     total = Column(Numeric(14,2), nullable=False, default=0)
     
     tipo_venta = Column(String(20), nullable=False, default='CONTADO')  # CONTADO, CREDITO
-    estado_venta = Column(String(20), nullable=False, default='COMPLETADA')  # COMPLETADA, 
-PENDIENTE, ANULADA
+    estado_venta = Column(String(20), nullable=False, default='COMPLETADA')  # COMPLETADA, PENDIENTE, ANULADA
     
     observaciones = Column(String)
     
