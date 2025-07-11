@@ -157,50 +157,34 @@ router = APIRouter()
 @router.get("/", response_model=dict)
 async def listar_variantes(
     # ===== FILTROS BÁSICOS =====
-    id_producto: Optional[UUID] = Query(None, description="Filtro por 
-producto padre"),
-    sku_variante: Optional[str] = Query(None, description="Filtro por SKU 
-de variante"),
-    codigo_barras_var: Optional[str] = Query(None, description="Filtro 
-por código de barras de variante"),
+    id_producto: Optional[UUID] = Query(None, description="Filtro por producto padre"),
+    sku_variante: Optional[str] = Query(None, description="Filtro por SKU de variante"),
+    codigo_barras_var: Optional[str] = Query(None, description="Filtro por código de barras de variante"),
     
     # ===== FILTROS DE PRECIO =====
     precio: Optional[float] = Query(None, description="Precio exacto"),
-    precio_min: Optional[float] = Query(None, description="Precio mínimo 
-(>=)"),
-    precio_max: Optional[float] = Query(None, description="Precio máximo 
-(<=)"),
-    precio_mayor: Optional[float] = Query(None, description="Precio mayor 
-que (>)"),
-    precio_menor: Optional[float] = Query(None, description="Precio menor 
-que (<)"),
+    precio_min: Optional[float] = Query(None, description="Precio mínimo (>=)"),
+    precio_max: Optional[float] = Query(None, description="Precio máximo (<=)"),
+    precio_mayor: Optional[float] = Query(None, description="Precio mayor que (>)"),
+    precio_menor: Optional[float] = Query(None, description="Precio menor que (<)"),
     
     # ===== FILTROS POR ATRIBUTOS DE VARIANTE =====
-    id_talla: Optional[UUID] = Query(None, description="Filtro por 
-talla"),
-    id_color: Optional[UUID] = Query(None, description="Filtro por 
-color"),
-    id_tamano: Optional[UUID] = Query(None, description="Filtro por 
-tamaño"),
+    id_talla: Optional[UUID] = Query(None, description="Filtro por talla"),
+    id_color: Optional[UUID] = Query(None, description="Filtro por color"),
+    id_tamano: Optional[UUID] = Query(None, description="Filtro por tamaño"),
     
     # ===== FILTROS POR PRODUCTO PADRE =====
-    producto_nombre: Optional[str] = Query(None, description="Filtro por 
-nombre del producto padre"),
-    producto_sku: Optional[str] = Query(None, description="Filtro por SKU 
-del producto padre"),
+    producto_nombre: Optional[str] = Query(None, description="Filtro por nombre del producto padre"),
+    producto_sku: Optional[str] = Query(None, description="Filtro por SKU del producto padre"),
     
     # ===== PARÁMETROS DE CONFIGURACIÓN =====
-    expandir: bool = Query(False, description="Incluir objeto producto 
-relacionado completo"),
-    skip: int = Query(0, ge=0, description="Número de registros a 
-omitir"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de 
-registros a retornar"),
+    expandir: bool = Query(False, description="Incluir objeto producto relacionado completo"),
+    skip: int = Query(0, ge=0, description="Número de registros a omitir"),
+    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros a retornar"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Lista variantes de productos en estado "activo" con paginación, 
-filtros opcionales extendidos
+    Lista variantes de productos en estado "activo" con paginación, filtros opcionales extendidos
     y opción de expandir objeto producto relacionado.
     """
     # 1) Obtener UUID del estado "activo" desde caché/contexto
@@ -218,18 +202,15 @@ filtros opcionales extendidos
         )
     else:
         # Si expandir=False, consulta simple
-        query = select(ProductoVariante).where(ProductoVariante.id_estado 
-== estado_activo_id)
+        query = select(ProductoVariante).where(ProductoVariante.id_estado == estado_activo_id)
 
     # 3) Aplicar filtros básicos
     if id_producto:
         query = query.where(ProductoVariante.id_producto == id_producto)
     if sku_variante:
-        query = 
-query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
+        query = query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
     if codigo_barras_var:
-        query = 
-query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
+        query = query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
 
     # 4) Aplicar filtros de precio
     if precio is not None:
@@ -251,12 +232,10 @@ query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
     if id_tamano:
         query = query.where(ProductoVariante.id_tamano == id_tamano)
 
-    # 6) Aplicar filtros por producto padre (requiere join si no está ya 
-hecho)
+    # 6) Aplicar filtros por producto padre (requiere join si no está ya hecho)
     if producto_nombre or producto_sku:
         if not expandir:
-            # Si no estamos expandiendo, necesitamos hacer join para 
-filtrar
+            # Si no estamos expandiendo, necesitamos hacer join para filtrar
             query = query.join(Producto).where(
                 and_(
                     ProductoVariante.id_producto == Producto.id_producto,
@@ -265,55 +244,41 @@ filtrar
             )
         
         if producto_nombre:
-            query = 
-query.where(Producto.nombre.ilike(f"%{producto_nombre}%"))
+            query = query.where(Producto.nombre.ilike(f"%{producto_nombre}%"))
         if producto_sku:
             query = query.where(Producto.sku.ilike(f"%{producto_sku}%"))
 
     # 7) Ordenar por fecha de creación descendente
     query = query.order_by(ProductoVariante.created_at.desc())
 
-    # 8) Contar total de registros (replicando la misma lógica sin 
-offset/limit)
-    count_query = 
-select(func.count(ProductoVariante.id_producto_variante)).where(
+    # 8) Contar total de registros (replicando la misma lógica sin offset/limit)
+    count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
         ProductoVariante.id_estado == estado_activo_id
     )
     
     # Aplicar mismos filtros al count_query
     if id_producto:
-        count_query = count_query.where(ProductoVariante.id_producto == 
-id_producto)
+        count_query = count_query.where(ProductoVariante.id_producto == id_producto)
     if sku_variante:
-        count_query = 
-count_query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
+        count_query = count_query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
     if codigo_barras_var:
-        count_query = 
-count_query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
+        count_query = count_query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
     if precio is not None:
-        count_query = count_query.where(ProductoVariante.precio == 
-precio)
+        count_query = count_query.where(ProductoVariante.precio == precio)
     if precio_min is not None:
-        count_query = count_query.where(ProductoVariante.precio >= 
-precio_min)
+        count_query = count_query.where(ProductoVariante.precio >= precio_min)
     if precio_max is not None:
-        count_query = count_query.where(ProductoVariante.precio <= 
-precio_max)
+        count_query = count_query.where(ProductoVariante.precio <= precio_max)
     if precio_mayor is not None:
-        count_query = count_query.where(ProductoVariante.precio > 
-precio_mayor)
+        count_query = count_query.where(ProductoVariante.precio > precio_mayor)
     if precio_menor is not None:
-        count_query = count_query.where(ProductoVariante.precio < 
-precio_menor)
+        count_query = count_query.where(ProductoVariante.precio < precio_menor)
     if id_talla:
-        count_query = count_query.where(ProductoVariante.id_talla == 
-id_talla)
+        count_query = count_query.where(ProductoVariante.id_talla == id_talla)
     if id_color:
-        count_query = count_query.where(ProductoVariante.id_color == 
-id_color)
+        count_query = count_query.where(ProductoVariante.id_color == id_color)
     if id_tamano:
-        count_query = count_query.where(ProductoVariante.id_tamano == 
-id_tamano)
+        count_query = count_query.where(ProductoVariante.id_tamano == id_tamano)
     
     if producto_nombre or producto_sku:
         count_query = count_query.join(Producto).where(
@@ -323,11 +288,9 @@ id_tamano)
             )
         )
         if producto_nombre:
-            count_query = 
-count_query.where(Producto.nombre.ilike(f"%{producto_nombre}%"))
+            count_query = count_query.where(Producto.nombre.ilike(f"%{producto_nombre}%"))
         if producto_sku:
-            count_query = 
-count_query.where(Producto.sku.ilike(f"%{producto_sku}%"))
+            count_query = count_query.where(Producto.sku.ilike(f"%{producto_sku}%"))
 
     # 9) Ejecutar count
     total = await db.scalar(count_query)
@@ -349,16 +312,13 @@ count_query.where(Producto.sku.ilike(f"%{producto_sku}%"))
             )
         )
         productos_result = await db.execute(productos_query)
-        productos = {p.id_producto: p for p in 
-productos_result.scalars().all()}
+        productos = {p.id_producto: p for p in productos_result.scalars().all()}
         
         # Crear respuesta expandida
         variantes_expandidas = []
         for variante in variantes:
-            variante_dict = 
-ProductoVarianteRead.model_validate(variante).model_dump()
-            variante_dict['producto'] = 
-ProductoRead.model_validate(productos[variante.id_producto]).model_dump() 
+            variante_dict = ProductoVarianteRead.model_validate(variante).model_dump()
+            variante_dict['producto'] = ProductoRead.model_validate(productos[variante.id_producto]).model_dump() 
 if variante.id_producto in productos else None
             variantes_expandidas.append(variante_dict)
         
@@ -374,8 +334,7 @@ if variante.id_producto in productos else None
             "success": True,
             "total_count": total,
             "expandido": False,
-            "data": [ProductoVarianteRead.model_validate(v) for v in 
-variantes]
+            "data": [ProductoVarianteRead.model_validate(v) for v in variantes]
         }
 
 @router.get("/combo", response_model=dict)
@@ -384,8 +343,7 @@ async def listar_variantes_combo(
 producto padre"),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """Endpoint optimizado para llenar ComboBox de variantes de 
-productos"""
+    """Endpoint optimizado para llenar ComboBox de variantes de productos"""
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
     query = select(
@@ -433,8 +391,7 @@ async def listar_variantes_por_producto(
     producto = producto_result.scalar_one_or_none()
     
     if not producto:
-        raise HTTPException(status_code=404, detail="Producto no 
-encontrado")
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
     
     # Obtener variantes del producto
     stmt = select(ProductoVariante).where(
@@ -454,8 +411,7 @@ encontrado")
         "success": True,
         "total_count": total,
         "producto": ProductoRead.model_validate(producto).model_dump(),
-        "data": [ProductoVarianteRead.model_validate(v) for v in 
-variantes]
+        "data": [ProductoVarianteRead.model_validate(v) for v in variantes]
     }
 
 @router.get("/{id_producto_variante}", 
@@ -465,8 +421,7 @@ async def obtener_variante(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Obtiene una variante de producto por su ID, sólo si está en estado 
-"activo".
+    Obtiene una variante de producto por su ID, sólo si está en estado "activo".
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
 
@@ -478,8 +433,7 @@ async def obtener_variante(
     variante = result.scalar_one_or_none()
 
     if not variante:
-        raise HTTPException(status_code=404, detail="Variante de producto 
-no encontrada")
+        raise HTTPException(status_code=404, detail="Variante de producto no encontrada")
 
     return ProductoVarianteRead.model_validate(variante)
 
@@ -489,8 +443,7 @@ async def crear_variante(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Crea una nueva variante de producto. Aplica RLS y defaults de 
-servidor.
+    Crea una nueva variante de producto. Aplica RLS y defaults de servidor.
     """
     # 1) Recuperar tenant y usuario del contexto RLS
     ctx = await obtener_contexto(db)
@@ -505,8 +458,7 @@ servidor.
     producto = producto_result.scalar_one_or_none()
     
     if not producto:
-        raise HTTPException(status_code=400, detail="Producto padre no 
-encontrado o inactivo")
+        raise HTTPException(status_code=400, detail="Producto padre no encontrado o inactivo")
 
     # 3) Construir instancia ORM
     nueva = ProductoVariante(
@@ -556,15 +508,13 @@ async def actualizar_variante(
     result = await db.execute(stmt)
     variante = result.scalar_one_or_none()
     if not variante:
-        raise HTTPException(status_code=404, detail="Variante de producto 
-no encontrada")
+        raise HTTPException(status_code=404, detail="Variante de producto no encontrada")
 
     # 3) Obtener contexto del usuario
     ctx = await obtener_contexto(db)
 
     # 4) Si se cambia el producto padre, verificar que existe
-    if entrada.id_producto is not None and entrada.id_producto != 
-variante.id_producto:
+    if entrada.id_producto is not None and entrada.id_producto != variante.id_producto:
         producto_query = select(Producto).where(
             Producto.id_producto == entrada.id_producto,
             Producto.id_estado == estado_activo_id
@@ -573,8 +523,7 @@ variante.id_producto:
         producto = producto_result.scalar_one_or_none()
         
         if not producto:
-            raise HTTPException(status_code=400, detail="Producto padre 
-no encontrado o inactivo")
+            raise HTTPException(status_code=400, detail="Producto padre no encontrado o inactivo")
 
     # 5) Actualizar solo los campos proporcionados
     if entrada.id_producto is not None:
@@ -613,8 +562,7 @@ async def eliminar_variante(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Elimina físicamente una variante de producto. Se respetan políticas 
-RLS.
+    Elimina físicamente una variante de producto. Se respetan políticas RLS.
     """
     # Verificar que la variante existe
     result = await db.execute(
@@ -624,16 +572,13 @@ id_producto_variante)
     )
     variante = result.scalar_one_or_none()
     if not variante:
-        raise HTTPException(status_code=404, detail="Variante de producto 
-no encontrada")
+        raise HTTPException(status_code=404, detail="Variante de producto no encontrada")
 
     # Eliminar físicamente
     await db.execute(
         
-delete(ProductoVariante).where(ProductoVariante.id_producto_variante == 
-id_producto_variante)
+delete(ProductoVariante).where(ProductoVariante.id_producto_variante == id_producto_variante)
     )
     await db.commit()
 
-    return {"success": True, "message": "Variante de producto eliminada 
-permanentemente"}
+    return {"success": True, "message": "Variante de producto eliminada permanentemente"}
