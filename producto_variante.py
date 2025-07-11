@@ -308,8 +308,7 @@ async def listar_variantes(
         variantes_expandidas = []
         for variante in variantes:
             variante_dict = ProductoVarianteRead.model_validate(variante).model_dump()
-            variante_dict['producto'] = ProductoRead.model_validate(productos[variante.id_producto]).model_dump() 
-if variante.id_producto in productos else None
+            variante_dict['producto'] = ProductoRead.model_validate(productos[variante.id_producto]).model_dump() if variante.id_producto in productos else None
             variantes_expandidas.append(variante_dict)
         
         return {
