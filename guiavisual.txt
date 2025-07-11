@@ -1,0 +1,140 @@
+# 🎨 Guía Visual Completa - Pantallas de Ventas SmartPoS 2025
+
+## 📋 **RESUMEN DE PANTALLAS CREADAS**
+
+He creado **4 mockups fotorrealistas** que simulan exactamente cómo se verán las pantallas en Delphi FMX. Cada mockup incluye:
+
+- ✅ Colores y estilos similares a FMX
+- ✅ Dimensiones exactas especificadas
+- ✅ Todos los controles y layouts
+- ✅ Datos de ejemplo realistas
+- ✅ Estados interactivos (selecciones, hover, etc.)
+
+---
+
+## 1. 🛒 **PUNTO DE VENTA PRINCIPAL**
+**Archivo:** `UnitPuntoVenta.pas`  
+**Dimensiones:** 1200x800px  
+**Layout:** Dos paneles (60% izquierdo, 40% derecho)
+
+### **Características Visuales:**
+- **Panel Izquierdo:** Búsqueda de productos y grid de productos en venta
+- **Panel Derecho:** Información de venta, cliente, totales, formas de pago y acciones
+- **Colores:** Verde para botón principal, azul para acciones secundarias
+- **Grid:** 7 columnas con datos de ejemplo (Coca Cola, Sabritas, etc.)
+- **Totales:** Calculadora visual con subtotal, descuento, impuestos y total
+
+### **Elementos Clave:**
+- Campo de búsqueda con placeholder "Código de barras, SKU o nombre..."
+- Botón principal verde "🛒 FINALIZAR VENTA"
+- Grid con productos agregados y botones de eliminación
+- Sección de formas de pago con dropdown y montos
+- Sistema de toast notification en la parte inferior
+
+---
+
+## 2. 👥 **SELECCIÓN DE CLIENTE**
+**Archivo:** `UnitSeleccionCliente.pas`  
+**Dimensiones:** 900x700px  
+**Layout:** Vertical con filtros, grid y selección
+
+### **Características Visuales:**
+- **Filtros:** Búsqueda por texto y checkboxes de tipo de cliente
+- **Grid:** 6 columnas (Nombre, Apellido, Teléfono, Email, RFC, Tipo)
+- **Tags:** Etiquetas de color para tipo de cliente (Empresa/Consumidor)
+- **Selección:** Área de información del cliente seleccionado
+- **Paginación:** Controles de navegación estilo moderno
+
+### **Elementos Clave:**
+- Campo de búsqueda con ejemplo "García"
+- Row seleccionada con highlight azul
+- Tags de tipo de cliente con colores diferenciados
+- Área de información detallada del cliente seleccionado
+- Botones de acción: Seleccionar (verde), Nuevo Cliente, Cancelar
+
+---
+
+## 3. 📦 **SELECCIÓN DE PRODUCTO**
+**Archivo:** `UnitSeleccionProducto.pas`  
+**Dimensiones:** 1000x750px  
+**Layout:** Dos secciones (75% superior, 25% lateral derecho)
+
+### **Características Visuales:**
+- **Filtros Avanzados:** Búsqueda, marca, categoría, precios y checkboxes
+- **Grid de Productos:** 7 columnas con información completa
+- **Panel Derecho:** Producto seleccionado, cantidad y acciones
+- **Control de Cantidad:** Botones +/- con campo numérico
+- **Stock Visual:** Colores diferenciados (verde=stock bueno, rojo=stock bajo)
+
+### **Elementos Clave:**
+- Filtros en dos filas con dropdowns de marca y categoría
+- Grid con productos Coca Cola de ejemplo
+- Tags de marca con colores
+- Control de cantidad con botones grandes +/-
+- Botón principal "📦 AGREGAR PRODUCTO"
+
+---
+
+## 4. 📊 **CONSULTA DE VENTAS**
+**Archivo:** `UnitConsultaVentas.pas`  
+**Dimensiones:** 1200x800px  
+**Layout:** Superior (listado) e inferior (resumen y detalle)
+
+### **Características Visuales:**
+- **Filtros Completos:** Fechas, cliente, vendedor, terminal, estado, folio
+- **Botones de Periodo:** Hoy, Últimos 7, Este mes
+- **Grid de Ventas:** 10 columnas con información financiera
+- **Panel de Resumen:** Totales financieros con destacado
+- **Detalle:** Información de venta seleccionada con acciones
+
+### **Elementos Clave:**
+- Filtros de fecha con campos tipo date
+- Botones rápidos de período temporal
+- Grid con estados visuales (tags de completada/pendiente/anulada)
+- Resumen financiero con totales destacados en verde
+- Área de detalle con botones de Ver, Reimprimir, Anular
+
+---
+
+## 🎯 **NOTAS DE IMPLEMENTACIÓN EN DELPHI**
+
+### **Colores Principales:**
+- **Azul Primario:** `$FF0969DA` (botones principales)
+- **Verde Éxito:** `$FF2EA043` (finalizar venta, totales)
+- **Rojo Eliminación:** `$FFDA3633` (botones de eliminar)
+- **Gris Fondo:** `$FFF6F8FA` (campos readonly)
+- **Borde:** `$FFD0D7DE` (bordes de controles)
+
+### **Fuentes:**
+- **Principal:** Segoe UI, 14px
+- **Títulos:** Segoe UI, 16px, Bold
+- **Labels:** Segoe UI, 13px, Medium
+- **Totales:** Segoe UI, 18px, Bold
+
+### **Dimensiones Estándar:**
+- **Altura de Controles:** 25-30px
+- **Padding de GroupBox:** 15px
+- **Spacing entre controles:** 10px
+- **Altura de Grid Header:** 30px
+- **Altura de Grid Row:** 25px
+
+### **Componentes FMX Recomendados:**
+- **TLayout** para estructura principal
+- **TGroupBox** para secciones
+- **TStringGrid** para tablas
+- **TEdit** para campos de entrada
+- **TButton** para acciones
+- **TComboBox** para selecciones
+- **TLabel** para etiquetas
+- **TMemo** para áreas de texto
+
+---
+
+## 🚀 **FLUJO DE IMPLEMENTACIÓN SUGERIDO**
+
+1. **Empezar con UnitPuntoVenta.pas** (pantalla principal)
+2. **Implementar UnitSeleccionCliente.pas** (más simple)
+3. **Crear UnitSeleccionProducto.pas** (filtros complejos)
+4. **Finalizar con UnitConsultaVentas.pas** (reportes y consultas)
+
+Cada mockup te muestra exactamente cómo debe verse la pantalla final, con todos los elementos posicionados correctamente y los estilos aplicados. ¡Esto te ahorrará mucho tiempo en el diseño y te dará una referencia visual perfecta para la implementación! 🎨✨
