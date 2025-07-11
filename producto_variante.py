@@ -13,8 +13,7 @@ from sqlalchemy import (
     Column, String, Numeric, Integer, DateTime, func, select, text, 
     delete, and_, or_, cast, join
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT  # 
-Tipos PostgreSQL específicos
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT  # Tipos PostgreSQL específicos
 from sqlalchemy.ext.asyncio import AsyncSession                 # Sesión asíncrona de SQLAlchemy
 
 # Importa base de modelos y función de sesión configurada con RLS
