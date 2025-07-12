@@ -812,62 +812,68 @@ async def buscar_producto_por_codigo(
     # =================
     # PASO 1: Buscar como variante específica
     # =================
-    variante_query = select(
-        ProductoVariante.id_producto_variante,
-        ProductoVariante.id_producto,
-        ProductoVariante.sku_variante,
-        ProductoVariante.codigo_barras_var,
-        ProductoVariante.precio,
-        ProductoVariante.peso_gr,
-        ProductoVariante.vida_util_dias,
-        Producto.nombre.label('producto_nombre'),
-        Producto.descripcion.label('producto_descripcion'),
-        Producto.precio_base,
-        Producto.es_kit,
-        # Información de la talla
-        CatTalla.nombre.label('talla_nombre'),
-        # Información del color  
-        CatColor.nombre.label('color_nombre'),
-        # Información del tamaño
-        CatTamano.nombre.label('tamano_nombre')
-    ).select_from(
-        ProductoVariante.__table__
-        .join(
-            Producto.__table__,
-            and_(
-                ProductoVariante.id_producto == Producto.id_producto,
-                Producto.id_estado == estado_activo_id
-            )
+    # Usamos consulta SQL directa para evitar imports circulares
+    variante_query = text("""
+        SELECT 
+            pv.id_producto_variante,
+            pv.id_producto,
+            pv.sku_variante,
+            pv.codigo_barras_var,
+            pv.precio,
+            pv.peso_gr,
+            pv.vida_util_dias,
+            p.nombre as producto_nombre,
+            p.descripcion as producto_descripcion,
+            p.precio_base,
+            p.es_kit,
+            ct.nombre as talla_nombre,
+            cc.nombre as color_nombre,
+            ctam.nombre as tamano_nombre
+        FROM producto_variante pv
+        INNER JOIN producto p ON pv.id_producto = p.id_producto 
+            AND p.id_estado = :estado_activo_id
+        LEFT JOIN cat_talla ct ON pv.id_talla = ct.id_talla
+        LEFT JOIN cat_color cc ON pv.id_color = cc.id_color  
+        LEFT JOIN cat_tamano ctam ON pv.id_tamano = ctam.id_tamano
+        WHERE pv.id_estado = :estado_activo_id
+        AND (
+            LOWER(pv.sku_variante) LIKE LOWER(:codigo_like) 
+            OR LOWER(pv.codigo_barras_var) LIKE LOWER(:codigo_like)
         )
-        .outerjoin(CatTalla.__table__, ProductoVariante.id_talla == CatTalla.id_talla)
-        .outerjoin(CatColor.__table__, ProductoVariante.id_color == CatColor.id_color)
-        .outerjoin(CatTamano.__table__, ProductoVariante.id_tamano == CatTamano.id_tamano)
-    ).where(
-        and_(
-            ProductoVariante.id_estado == estado_activo_id,
-            or_(
-                ProductoVariante.sku_variante.ilike(f"%{codigo}%"),
-                ProductoVariante.codigo_barras_var.ilike(f"%{codigo}%")
-            )
-        )
-    )
+        LIMIT 1
+    """)
     
-    result = await db.execute(variante_query)
+    result = await db.execute(variante_query, {
+        "estado_activo_id": estado_activo_id,
+        "codigo_like": f"%{codigo}%"
+    })
     variante_row = result.first()
     
     if variante_row:
         # ENCONTRADO COMO VARIANTE ESPECÍFICA
+        precio_final = float(variante_row.precio) if variante_row.precio else float(variante_row.precio_base) if variante_row.precio_base else 0.0
+        
+        # Construir descripción de atributos
+        atributos = []
+        if variante_row.talla_nombre:
+            atributos.append(f"Talla: {variante_row.talla_nombre}")
+        if variante_row.color_nombre:
+            atributos.append(f"Color: {variante_row.color_nombre}")
+        if variante_row.tamano_nombre:
+            atributos.append(f"Tamaño: {variante_row.tamano_nombre}")
+        
         variante_info = {
             "id_producto_variante": str(variante_row.id_producto_variante),
             "id_producto": str(variante_row.id_producto),
             "sku_variante": variante_row.sku_variante,
             "codigo_barras_var": variante_row.codigo_barras_var,
-            "precio": float(variante_row.precio) if variante_row.precio else float(variante_row.precio_base) if variante_row.precio_base else 0.0,
+            "precio": precio_final,
             "peso_gr": float(variante_row.peso_gr) if variante_row.peso_gr else 0.0,
             "vida_util_dias": variante_row.vida_util_dias,
             "producto_nombre": variante_row.producto_nombre,
             "producto_descripcion": variante_row.producto_descripcion,
             "es_kit": variante_row.es_kit,
+            "descripcion_variante": " | ".join(atributos) if atributos else "Estándar",
             "atributos": {
                 "talla": variante_row.talla_nombre,
                 "color": variante_row.color_nombre, 
@@ -888,54 +894,57 @@ async def buscar_producto_por_codigo(
     # =================
     # PASO 2: Buscar como producto base
     # =================
-    producto_query = select(
-        Producto.id_producto,
-        Producto.sku,
-        Producto.codigo_barras,
-        Producto.nombre,
-        Producto.descripcion,
-        Producto.precio_base,
-        Producto.es_kit,
-        Producto.vida_util_dias
-    ).where(
-        and_(
-            Producto.id_estado == estado_activo_id,
-            or_(
-                Producto.sku.ilike(f"%{codigo}%"),
-                Producto.codigo_barras.ilike(f"%{codigo}%"),
-                Producto.nombre.ilike(f"%{codigo}%")
-            )
+    producto_query = text("""
+        SELECT 
+            id_producto,
+            sku,
+            codigo_barras,
+            nombre,
+            descripcion,
+            precio_base,
+            es_kit,
+            vida_util_dias
+        FROM producto 
+        WHERE id_estado = :estado_activo_id
+        AND (
+            LOWER(sku) LIKE LOWER(:codigo_like) 
+            OR LOWER(codigo_barras) LIKE LOWER(:codigo_like)
+            OR LOWER(nombre) LIKE LOWER(:codigo_like)
         )
-    )
+        LIMIT 1
+    """)
     
-    result = await db.execute(producto_query)
+    result = await db.execute(producto_query, {
+        "estado_activo_id": estado_activo_id,
+        "codigo_like": f"%{codigo}%"
+    })
     producto_row = result.first()
     
     if producto_row:
         # ENCONTRADO COMO PRODUCTO BASE - Buscar sus variantes
-        variantes_query = select(
-            ProductoVariante.id_producto_variante,
-            ProductoVariante.sku_variante,
-            ProductoVariante.codigo_barras_var,
-            ProductoVariante.precio,
-            ProductoVariante.peso_gr,
-            # Información de atributos
-            CatTalla.nombre.label('talla_nombre'),
-            CatColor.nombre.label('color_nombre'),
-            CatTamano.nombre.label('tamano_nombre')
-        ).select_from(
-            ProductoVariante.__table__
-            .outerjoin(CatTalla.__table__, ProductoVariante.id_talla == CatTalla.id_talla)
-            .outerjoin(CatColor.__table__, ProductoVariante.id_color == CatColor.id_color)
-            .outerjoin(CatTamano.__table__, ProductoVariante.id_tamano == CatTamano.id_tamano)
-        ).where(
-            and_(
-                ProductoVariante.id_producto == producto_row.id_producto,
-                ProductoVariante.id_estado == estado_activo_id
-            )
-        ).order_by(ProductoVariante.sku_variante)
+        variantes_query = text("""
+            SELECT 
+                pv.id_producto_variante,
+                pv.sku_variante,
+                pv.codigo_barras_var,
+                pv.precio,
+                pv.peso_gr,
+                ct.nombre as talla_nombre,
+                cc.nombre as color_nombre,
+                ctam.nombre as tamano_nombre
+            FROM producto_variante pv
+            LEFT JOIN cat_talla ct ON pv.id_talla = ct.id_talla
+            LEFT JOIN cat_color cc ON pv.id_color = cc.id_color
+            LEFT JOIN cat_tamano ctam ON pv.id_tamano = ctam.id_tamano
+            WHERE pv.id_producto = :id_producto
+            AND pv.id_estado = :estado_activo_id
+            ORDER BY pv.sku_variante
+        """)
         
-        result = await db.execute(variantes_query)
+        result = await db.execute(variantes_query, {
+            "id_producto": producto_row.id_producto,
+            "estado_activo_id": estado_activo_id
+        })
         variantes_rows = result.fetchall()
         
         # Construir información del producto
