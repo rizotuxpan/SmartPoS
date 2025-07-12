@@ -29,8 +29,6 @@ from umedida import UMedida, UMedidaRead
 from categoria import Categoria, CategoriaRead
 from subcategoria import Subcategoria, SubcategoriaRead
 
-from producto_variante import ProductoVariante, CatTalla, CatColor, CatTamano
-
 # --------------------------------------
 # Definición del modelo ORM (SQLAlchemy)
 # --------------------------------------
