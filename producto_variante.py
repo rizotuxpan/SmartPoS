@@ -16,7 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, relationship
 
 from db import Base, get_async_db
-from utils import get_estado_id_por_clave
+# Utilidad para resolver claves de estado con caché
+from utils.estado import get_estado_id_por_clave
+# Utilidad para extraer tenant y usuario desde la sesión (RLS)
+from utils.contexto import obtener_contexto
 
 # Importar modelos necesarios para joins (asegúrate de que existan)
 from producto import Producto, ProductoRead
@@ -587,15 +590,9 @@ async def crear_variante(
     from uuid import uuid4
     from sqlalchemy import text
     
-    # Obtener estado activo y IDs necesarios
+    # Obtener estado activo y contexto
     estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    # Obtener tenant_id y user_id del contexto de la sesión
-    tenant_result = await db.execute(text("SELECT current_setting('app.current_tenant')"))
-    tenant_id = UUID(tenant_result.scalar())
-    
-    user_result = await db.execute(text("SELECT current_setting('app.current_user')"))
-    user_id = UUID(user_result.scalar())
+    tenant_id, user_id = await obtener_contexto(db)
     
     # Crear nueva variante
     nueva_variante = ProductoVariante(
@@ -634,9 +631,8 @@ async def actualizar_variante(
     """
     Actualiza una variante existente.
     """
-    from sqlalchemy import text
-    
     estado_activo_id = await get_estado_id_por_clave("act", db)
+    tenant_id, user_id = await obtener_contexto(db)
     
     # Buscar variante existente
     query = select(ProductoVariante).where(
@@ -651,10 +647,6 @@ async def actualizar_variante(
     
     if not variante:
         raise HTTPException(status_code=404, detail="Variante no encontrada")
-    
-    # Obtener user_id del contexto
-    user_result = await db.execute(text("SELECT current_setting('app.current_user')"))
-    user_id = UUID(user_result.scalar())
     
     # Actualizar campos proporcionados
     update_data = variante_data.model_dump(exclude_unset=True)
@@ -689,10 +681,9 @@ async def eliminar_variante(
     """
     Elimina (desactiva) una variante cambiando su estado a "inactivo".
     """
-    from sqlalchemy import text
-    
     estado_activo_id = await get_estado_id_por_clave("act", db)
     estado_inactivo_id = await get_estado_id_por_clave("ina", db)
+    tenant_id, user_id = await obtener_contexto(db)
     
     # Buscar variante existente
     query = select(ProductoVariante).where(
@@ -707,10 +698,6 @@ async def eliminar_variante(
     
     if not variante:
         raise HTTPException(status_code=404, detail="Variante no encontrada")
-    
-    # Obtener user_id del contexto
-    user_result = await db.execute(text("SELECT current_setting('app.current_user')"))
-    user_id = UUID(user_result.scalar())
     
     # Cambiar estado a inactivo
     variante.id_estado = estado_inactivo_id
