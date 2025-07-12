@@ -247,6 +247,60 @@ class ProductoVarianteReadExpanded(ProductoVarianteBase):
 # ---------------------------
 router = APIRouter()
 
+@router.get("/combo", response_model=dict)
+async def listar_variantes_combo(
+    id_producto: Optional[UUID] = Query(None, description="Filtro por ID del producto"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Endpoint optimizado para llenar ComboBox de variantes.
+    Retorna solo ID y descripción simplificada.
+    """
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    # Construir consulta base
+    query = select(
+        ProductoVariante.id_producto_variante,
+        ProductoVariante.sku_variante,
+        ProductoVariante.precio,
+        Producto.nombre.label('producto_nombre')
+    ).select_from(
+        ProductoVariante.__table__
+        .join(
+            Producto.__table__,
+            and_(
+                ProductoVariante.id_producto == Producto.id_producto,
+                Producto.id_estado == estado_activo_id
+            )
+        )
+    ).where(ProductoVariante.id_estado == estado_activo_id)
+    
+    # Aplicar filtro por producto si se proporciona
+    if id_producto:
+        query = query.where(ProductoVariante.id_producto == id_producto)
+    
+    # Ordenar por SKU
+    query = query.order_by(ProductoVariante.sku_variante)
+    
+    # Ejecutar consulta
+    result = await db.execute(query)
+    variantes = []
+    
+    for row in result:
+        variantes.append({
+            "id": str(row.id_producto_variante),
+            "texto": f"{row.sku_variante} - {row.producto_nombre}" + (f" (${row.precio})" if row.precio else ""),
+            "sku_variante": row.sku_variante,
+            "precio": float(row.precio) if row.precio else None,
+            "producto_nombre": row.producto_nombre
+        })
+    
+    return {
+        "success": True,
+        "total_count": len(variantes),
+        "data": variantes
+    }
+
 @router.get("/", response_model=dict)
 async def listar_variantes(
     # ===== FILTROS BÁSICOS =====
