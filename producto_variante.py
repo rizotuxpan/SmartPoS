@@ -1,83 +1,160 @@
 # producto_variante.py
 # ---------------------------
-# Módulo de endpoints REST para gestión de Variantes de Productos.
-# Incluye filtros avanzados y opción de expandir objetos relacionados.
+# Módulo de endpoints REST para gestión de Variantes de Productos
+# Usa FastAPI, SQLAlchemy Async y Pydantic para validación.
+# ---------------------------
 
-from fastapi import APIRouter, Depends, HTTPException, Query    # FastAPI para rutas y dependencias
-from pydantic import BaseModel, model_validator                 # Pydantic para schemas de entrada/salida
-from typing import Optional                                     # Tipos para anotaciones
-from uuid import UUID                                           # UUID para identificadores únicos
-from datetime import datetime                                   # Fecha y hora
-from decimal import Decimal                                     # Para campos numéricos de alta precisión
-from sqlalchemy import (
-    Column, String, Numeric, Integer, DateTime, func, select, text, 
-    delete, and_, or_, cast, join
-)
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT  # Tipos PostgreSQL específicos
-from sqlalchemy.ext.asyncio import AsyncSession                 # Sesión asíncrona de SQLAlchemy
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from pydantic import BaseModel, model_validator
+from typing import Optional, List
+from decimal import Decimal
+from datetime import datetime
+from uuid import UUID
+from sqlalchemy import Column, String, Numeric, Integer, Boolean, Text, ForeignKey, DateTime, func, select, and_, or_, cast
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload, relationship
 
-# Importa base de modelos y función de sesión configurada con RLS
 from db import Base, get_async_db
 # Utilidad para resolver claves de estado con caché
 from utils.estado import get_estado_id_por_clave
 # Utilidad para extraer tenant y usuario desde la sesión (RLS)
 from utils.contexto import obtener_contexto
 
-# ===== IMPORTAR MODELOS Y ESQUEMAS RELACIONADOS =====
+# Importar modelos necesarios para joins (asegúrate de que existan)
 from producto import Producto, ProductoRead
 
-# --------------------------------------
-# Definición del modelo ORM (SQLAlchemy)
-# --------------------------------------
-class ProductoVariante(Base):
-    __tablename__ = "producto_variante"
+# ---------------------------
+# Modelos ORM SQLAlchemy para catálogos
+# ---------------------------
+class CatTalla(Base):
+    """Modelo ORM para catálogo de tallas"""
+    __tablename__ = "cat_talla"
     
-    id_producto_variante = Column(
-        PG_UUID(as_uuid=True),
-        primary_key=True,
-        server_default=text("gen_random_uuid()")
-    )
-    id_empresa = Column(
-        PG_UUID(as_uuid=True),
-        nullable=False,
-        
-server_default=text("current_setting('app.current_tenant'::text)::uuid")
-    )
-    id_estado = Column(
-        PG_UUID(as_uuid=True),
-        nullable=False,
-        server_default=text("f_default_estatus_activo()")
-    )
-    id_producto = Column(PG_UUID(as_uuid=True), nullable=False)
-    id_talla = Column(PG_UUID(as_uuid=True))
-    id_color = Column(PG_UUID(as_uuid=True))
-    id_tamano = Column(PG_UUID(as_uuid=True))
-    sku_variante = Column(String(50), nullable=False)
-    codigo_barras_var = Column(CITEXT)
-    precio = Column(Numeric(14,2), default=0)
-    peso_gr = Column(Numeric(10,2), default=0)
-    vida_util_dias = Column(Integer)
+    id_talla = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
+    codigo = Column(String(10), nullable=False)
+    nombre = Column(String(50), nullable=False)
+    descripcion = Column(Text)
+    orden_visualizacion = Column(Integer, server_default="1")
+    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
     created_by = Column(PG_UUID(as_uuid=True), nullable=False)
     modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_at = Column(
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class CatColor(Base):
+    """Modelo ORM para catálogo de colores"""
+    __tablename__ = "cat_color"
+    
+    id_color = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
+    codigo = Column(String(10), nullable=False)
+    nombre = Column(String(50), nullable=False)
+    hex_codigo = Column(String(7))
+    descripcion = Column(Text)
+    orden_visualizacion = Column(Integer, server_default="1")
+    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class CatTamano(Base):
+    """Modelo ORM para catálogo de tamaños"""
+    __tablename__ = "cat_tamano"
+    
+    id_tamano = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
+    codigo = Column(String(10), nullable=False)
+    nombre = Column(String(50), nullable=False)
+    descripcion = Column(Text)
+    unidad_medida = Column(String(10))
+    orden_visualizacion = Column(Integer, server_default="1")
+    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+# ---------------------------
+# Modelo ORM SQLAlchemy
+# ---------------------------
+class ProductoVariante(Base):
+    """
+    Modelo ORM para la tabla producto_variante.
+    Representa variantes de productos con atributos como talla, color, tamaño.
+    """
+    __tablename__ = "producto_variante"
+
+    # Campos principales
+    id_producto_variante = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id_empresa     = Column(PG_UUID(as_uuid=True), nullable=False)
+    id_producto    = Column(PG_UUID(as_uuid=True), ForeignKey('producto.id_producto'), nullable=False)
+    id_talla       = Column(PG_UUID(as_uuid=True), nullable=True)
+    id_color       = Column(PG_UUID(as_uuid=True), nullable=True)
+    id_tamano      = Column(PG_UUID(as_uuid=True), nullable=True)
+    sku_variante   = Column(String(50), nullable=False)
+    codigo_barras_var = Column(CITEXT, nullable=True)
+    precio         = Column(Numeric(14, 2), nullable=True, server_default="0")
+    peso_gr        = Column(Numeric(10, 2), nullable=True, server_default="0")
+    vida_util_dias = Column(Integer, nullable=True)
+    id_estado      = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_by     = Column(PG_UUID(as_uuid=True), nullable=False)
+    modified_by    = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_at     = Column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False
     )
-    updated_at = Column(
+    updated_at     = Column(
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False
     )
 
+    # Relaciones con otras tablas (opcional, requiere importar modelos)
+    # producto = relationship("Producto", back_populates="variantes")
+
+# ----------------------------------
+# Schemas de validación con Pydantic para catálogos
+# ----------------------------------
+class TallaRead(BaseModel):
+    """Schema de lectura para tallas"""
+    id_talla: UUID
+    codigo: str
+    nombre: str
+    descripcion: Optional[str] = None
+    orden_visualizacion: Optional[int] = None
+    model_config = {"from_attributes": True}
+
+class ColorRead(BaseModel):
+    """Schema de lectura para colores"""
+    id_color: UUID
+    codigo: str
+    nombre: str
+    hex_codigo: Optional[str] = None
+    descripcion: Optional[str] = None
+    orden_visualizacion: Optional[int] = None
+    model_config = {"from_attributes": True}
+
+class TamanoRead(BaseModel):
+    """Schema de lectura para tamaños"""
+    id_tamano: UUID
+    codigo: str
+    nombre: str
+    descripcion: Optional[str] = None
+    unidad_medida: Optional[str] = None
+    orden_visualizacion: Optional[int] = None
+    model_config = {"from_attributes": True}
+
 # ----------------------------------
 # Schemas de validación con Pydantic
 # ----------------------------------
 class ProductoVarianteBase(BaseModel):
     """
-    Esquema base con campos comunes para crear/actualizar Variante de 
-Producto.
+    Esquema base con campos comunes para crear/actualizar ProductoVariante.
     """
     id_producto: UUID
     id_talla: Optional[UUID] = None
@@ -85,19 +162,30 @@ Producto.
     id_tamano: Optional[UUID] = None
     sku_variante: str
     codigo_barras_var: Optional[str] = None
-    precio: Optional[Decimal] = 0
-    peso_gr: Optional[Decimal] = 0
+    precio: Optional[Decimal] = None
+    peso_gr: Optional[Decimal] = None
     vida_util_dias: Optional[int] = None
 
 class ProductoVarianteCreate(ProductoVarianteBase):
     """Esquema para creación; hereda todos los campos base."""
-    pass
+    
+    @model_validator(mode='after')
+    def validate_precio_positivo(self):
+        if self.precio is not None and self.precio < 0:
+            raise ValueError('El precio debe ser mayor o igual a 0')
+        return self
+    
+    @model_validator(mode='after')
+    def validate_vida_util(self):
+        if self.vida_util_dias is not None and self.vida_util_dias <= 0:
+            raise ValueError('La vida útil debe ser mayor a 0 días')
+        return self
 
 class ProductoVarianteUpdate(BaseModel):
     """
-    Esquema para actualización; todos los campos son opcionales.
+    Esquema para actualización con todos los campos opcionales.
+    Solo se actualizarán los campos que se proporcionen.
     """
-    id_producto: Optional[UUID] = None
     id_talla: Optional[UUID] = None
     id_color: Optional[UUID] = None
     id_tamano: Optional[UUID] = None
@@ -106,6 +194,18 @@ class ProductoVarianteUpdate(BaseModel):
     precio: Optional[Decimal] = None
     peso_gr: Optional[Decimal] = None
     vida_util_dias: Optional[int] = None
+    
+    @model_validator(mode='after')
+    def validate_precio_positivo(self):
+        if self.precio is not None and self.precio < 0:
+            raise ValueError('El precio debe ser mayor o igual a 0')
+        return self
+    
+    @model_validator(mode='after')
+    def validate_vida_util(self):
+        if self.vida_util_dias is not None and self.vida_util_dias <= 0:
+            raise ValueError('La vida útil debe ser mayor a 0 días')
+        return self
 
 class ProductoVarianteRead(ProductoVarianteBase):
     """
@@ -118,13 +218,13 @@ class ProductoVarianteRead(ProductoVarianteBase):
     modified_by: UUID
     created_at: datetime
     updated_at: datetime
-
-    model_config = {"from_attributes": True}  # Permitir conversión desde objeto ORM
+    
+    model_config = {"from_attributes": True}
 
 # ===== ESQUEMA EXPANDIDO =====
 class ProductoVarianteReadExpanded(ProductoVarianteBase):
     """
-    Esquema de lectura expandido con objeto producto relacionado completo.
+    Esquema de lectura expandido con objetos relacionados completos.
     """
     id_producto_variante: UUID
     id_empresa: UUID
@@ -134,8 +234,11 @@ class ProductoVarianteReadExpanded(ProductoVarianteBase):
     created_at: datetime
     updated_at: datetime
     
-    # Objeto producto relacionado completo
+    # Objetos relacionados completos
     producto: Optional[ProductoRead] = None
+    talla: Optional[TallaRead] = None
+    color: Optional[ColorRead] = None
+    tamano: Optional[TamanoRead] = None
     
     model_config = {"from_attributes": True}
 
@@ -144,429 +247,649 @@ class ProductoVarianteReadExpanded(ProductoVarianteBase):
 # ---------------------------
 router = APIRouter()
 
+@router.get("/combo", response_model=dict)
+async def listar_variantes_combo(
+    id_producto: Optional[UUID] = Query(None, description="Filtro por ID del producto"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Endpoint optimizado para llenar ComboBox de variantes.
+    Retorna solo ID y descripción simplificada.
+    """
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    # Construir consulta base
+    query = select(
+        ProductoVariante.id_producto_variante,
+        ProductoVariante.sku_variante,
+        ProductoVariante.precio,
+        Producto.nombre.label('producto_nombre')
+    ).select_from(
+        ProductoVariante.__table__
+        .join(
+            Producto.__table__,
+            and_(
+                ProductoVariante.id_producto == Producto.id_producto,
+                Producto.id_estado == estado_activo_id
+            )
+        )
+    ).where(ProductoVariante.id_estado == estado_activo_id)
+    
+    # Aplicar filtro por producto si se proporciona
+    if id_producto:
+        query = query.where(ProductoVariante.id_producto == id_producto)
+    
+    # Ordenar por SKU
+    query = query.order_by(ProductoVariante.sku_variante)
+    
+    # Ejecutar consulta
+    result = await db.execute(query)
+    variantes = []
+    
+    for row in result:
+        variantes.append({
+            "id": str(row.id_producto_variante),
+            "texto": f"{row.sku_variante} - {row.producto_nombre}" + (f" (${row.precio})" if row.precio else ""),
+            "sku_variante": row.sku_variante,
+            "precio": float(row.precio) if row.precio else None,
+            "producto_nombre": row.producto_nombre
+        })
+    
+    return {
+        "success": True,
+        "total_count": len(variantes),
+        "data": variantes
+    }
+
 @router.get("/", response_model=dict)
 async def listar_variantes(
     # ===== FILTROS BÁSICOS =====
-    id_producto: Optional[UUID] = Query(None, description="Filtro por producto padre"),
-    sku_variante: Optional[str] = Query(None, description="Filtro por SKU de variante"),
-    codigo_barras_var: Optional[str] = Query(None, description="Filtro por código de barras de variante"),
+    id_producto: Optional[UUID] = Query(None, description="Filtro por ID del producto"),
+    sku_variante: Optional[str] = Query(None, description="Filtro por SKU de la variante"),
+    codigo_barras_var: Optional[str] = Query(None, description="Filtro por código de barras de la variante"),
     
     # ===== FILTROS DE PRECIO =====
     precio: Optional[float] = Query(None, description="Precio exacto"),
     precio_min: Optional[float] = Query(None, description="Precio mínimo (>=)"),
     precio_max: Optional[float] = Query(None, description="Precio máximo (<=)"),
-    precio_mayor: Optional[float] = Query(None, description="Precio mayor que (>)"),
-    precio_menor: Optional[float] = Query(None, description="Precio menor que (<)"),
     
-    # ===== FILTROS POR ATRIBUTOS DE VARIANTE =====
-    id_talla: Optional[UUID] = Query(None, description="Filtro por talla"),
-    id_color: Optional[UUID] = Query(None, description="Filtro por color"),
-    id_tamano: Optional[UUID] = Query(None, description="Filtro por tamaño"),
-    
-    # ===== FILTROS POR PRODUCTO PADRE =====
-    producto_nombre: Optional[str] = Query(None, description="Filtro por nombre del producto padre"),
-    producto_sku: Optional[str] = Query(None, description="Filtro por SKU del producto padre"),
+    # ===== FILTROS POR ATRIBUTOS =====
+    id_talla: Optional[UUID] = Query(None, description="Filtro por ID de talla"),
+    id_color: Optional[UUID] = Query(None, description="Filtro por ID de color"),
+    id_tamano: Optional[UUID] = Query(None, description="Filtro por ID de tamaño"),
     
     # ===== PARÁMETROS DE CONFIGURACIÓN =====
-    expandir: bool = Query(False, description="Incluir objeto producto relacionado completo"),
+    expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
     skip: int = Query(0, ge=0, description="Número de registros a omitir"),
     limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros a retornar"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Lista variantes de productos en estado "activo" con paginación, filtros opcionales extendidos
-    y opción de expandir objeto producto relacionado.
+    Lista variantes de productos en estado "activo" con paginación, filtros opcionales
+    y opción de expandir objetos relacionados.
     """
-    # 1) Obtener UUID del estado "activo" desde caché/contexto
+    # 1) Obtener UUID del estado "activo"
     estado_activo_id = await get_estado_id_por_clave("act", db)
 
-    # 2) Construir consulta base
     if expandir:
-        # Si expandir=True, hacer join con producto
-        query = select(ProductoVariante).join(Producto).where(
-            and_(
-                ProductoVariante.id_estado == estado_activo_id,
-                ProductoVariante.id_producto == Producto.id_producto,
-                Producto.id_estado == estado_activo_id
-            )
-        )
-    else:
-        # Si expandir=False, consulta simple
-        query = select(ProductoVariante).where(ProductoVariante.id_estado == estado_activo_id)
-
-    # 3) Aplicar filtros básicos
-    if id_producto:
-        query = query.where(ProductoVariante.id_producto == id_producto)
-    if sku_variante:
-        query = query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
-    if codigo_barras_var:
-        query = query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
-
-    # 4) Aplicar filtros de precio
-    if precio is not None:
-        query = query.where(ProductoVariante.precio == precio)
-    if precio_min is not None:
-        query = query.where(ProductoVariante.precio >= precio_min)
-    if precio_max is not None:
-        query = query.where(ProductoVariante.precio <= precio_max)
-    if precio_mayor is not None:
-        query = query.where(ProductoVariante.precio > precio_mayor)
-    if precio_menor is not None:
-        query = query.where(ProductoVariante.precio < precio_menor)
-
-    # 5) Aplicar filtros por atributos de variante
-    if id_talla:
-        query = query.where(ProductoVariante.id_talla == id_talla)
-    if id_color:
-        query = query.where(ProductoVariante.id_color == id_color)
-    if id_tamano:
-        query = query.where(ProductoVariante.id_tamano == id_tamano)
-
-    # 6) Aplicar filtros por producto padre (requiere join si no está ya hecho)
-    if producto_nombre or producto_sku:
-        if not expandir:
-            # Si no estamos expandiendo, necesitamos hacer join para filtrar
-            query = query.join(Producto).where(
+        # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS =====
+        query = select(
+            ProductoVariante,
+            Producto,
+            CatTalla,
+            CatColor,
+            CatTamano
+        ).select_from(
+            ProductoVariante.__table__
+            .outerjoin(
+                Producto.__table__,
                 and_(
                     ProductoVariante.id_producto == Producto.id_producto,
                     Producto.id_estado == estado_activo_id
                 )
             )
-        
-        if producto_nombre:
-            query = query.where(Producto.nombre.ilike(f"%{producto_nombre}%"))
-        if producto_sku:
-            query = query.where(Producto.sku.ilike(f"%{producto_sku}%"))
-
-    # 7) Ordenar por fecha de creación descendente
-    query = query.order_by(ProductoVariante.created_at.desc())
-
-    # 8) Contar total de registros (replicando la misma lógica sin offset/limit)
-    count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
-        ProductoVariante.id_estado == estado_activo_id
-    )
-    
-    # Aplicar mismos filtros al count_query
-    if id_producto:
-        count_query = count_query.where(ProductoVariante.id_producto == id_producto)
-    if sku_variante:
-        count_query = count_query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
-    if codigo_barras_var:
-        count_query = count_query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
-    if precio is not None:
-        count_query = count_query.where(ProductoVariante.precio == precio)
-    if precio_min is not None:
-        count_query = count_query.where(ProductoVariante.precio >= precio_min)
-    if precio_max is not None:
-        count_query = count_query.where(ProductoVariante.precio <= precio_max)
-    if precio_mayor is not None:
-        count_query = count_query.where(ProductoVariante.precio > precio_mayor)
-    if precio_menor is not None:
-        count_query = count_query.where(ProductoVariante.precio < precio_menor)
-    if id_talla:
-        count_query = count_query.where(ProductoVariante.id_talla == id_talla)
-    if id_color:
-        count_query = count_query.where(ProductoVariante.id_color == id_color)
-    if id_tamano:
-        count_query = count_query.where(ProductoVariante.id_tamano == id_tamano)
-    
-    if producto_nombre or producto_sku:
-        count_query = count_query.join(Producto).where(
-            and_(
-                ProductoVariante.id_producto == Producto.id_producto,
-                Producto.id_estado == estado_activo_id
+            .outerjoin(
+                CatTalla.__table__,
+                and_(
+                    ProductoVariante.id_talla == CatTalla.id_talla,
+                    CatTalla.id_estado == estado_activo_id
+                )
             )
-        )
-        if producto_nombre:
-            count_query = count_query.where(Producto.nombre.ilike(f"%{producto_nombre}%"))
-        if producto_sku:
-            count_query = count_query.where(Producto.sku.ilike(f"%{producto_sku}%"))
-
-    # 9) Ejecutar count
-    total = await db.scalar(count_query)
-
-    # 10) Ejecutar consulta principal con paginación
-    result = await db.execute(query.offset(skip).limit(limit))
-    variantes = result.scalars().all()
-
-    # 11) Si expandir=True, cargar objetos producto relacionados
-    if expandir and variantes:
-        # Obtener IDs de productos para una consulta batch
-        producto_ids = list(set(v.id_producto for v in variantes))
-        
-        # Cargar productos en batch
-        productos_query = select(Producto).where(
-            and_(
-                Producto.id_producto.in_(producto_ids),
-                Producto.id_estado == estado_activo_id
+            .outerjoin(
+                CatColor.__table__,
+                and_(
+                    ProductoVariante.id_color == CatColor.id_color,
+                    CatColor.id_estado == estado_activo_id
+                )
             )
+            .outerjoin(
+                CatTamano.__table__,
+                and_(
+                    ProductoVariante.id_tamano == CatTamano.id_tamano,
+                    CatTamano.id_estado == estado_activo_id
+                )
+            )
+        ).where(ProductoVariante.id_estado == estado_activo_id)
+
+        # ===== APLICAR FILTROS =====
+        if id_producto:
+            query = query.where(ProductoVariante.id_producto == id_producto)
+        if sku_variante:
+            query = query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
+        if codigo_barras_var:
+            query = query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
+        if precio is not None:
+            query = query.where(ProductoVariante.precio == precio)
+        if precio_min is not None:
+            query = query.where(ProductoVariante.precio >= precio_min)
+        if precio_max is not None:
+            query = query.where(ProductoVariante.precio <= precio_max)
+        if id_talla:
+            query = query.where(ProductoVariante.id_talla == id_talla)
+        if id_color:
+            query = query.where(ProductoVariante.id_color == id_color)
+        if id_tamano:
+            query = query.where(ProductoVariante.id_tamano == id_tamano)
+
+        # Contar total (sin expansión para eficiencia)
+        count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
+            ProductoVariante.id_estado == estado_activo_id
         )
-        productos_result = await db.execute(productos_query)
-        productos = {p.id_producto: p for p in productos_result.scalars().all()}
         
-        # Crear respuesta expandida
-        variantes_expandidas = []
-        for variante in variantes:
-            variante_dict = ProductoVarianteRead.model_validate(variante).model_dump()
-            variante_dict['producto'] = ProductoRead.model_validate(productos[variante.id_producto]).model_dump() if variante.id_producto in productos else None
-            variantes_expandidas.append(variante_dict)
+        # Aplicar mismos filtros al conteo
+        if id_producto:
+            count_query = count_query.where(ProductoVariante.id_producto == id_producto)
+        if sku_variante:
+            count_query = count_query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
+        if codigo_barras_var:
+            count_query = count_query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
+        if precio is not None:
+            count_query = count_query.where(ProductoVariante.precio == precio)
+        if precio_min is not None:
+            count_query = count_query.where(ProductoVariante.precio >= precio_min)
+        if precio_max is not None:
+            count_query = count_query.where(ProductoVariante.precio <= precio_max)
+        if id_talla:
+            count_query = count_query.where(ProductoVariante.id_talla == id_talla)
+        if id_color:
+            count_query = count_query.where(ProductoVariante.id_color == id_color)
+        if id_tamano:
+            count_query = count_query.where(ProductoVariante.id_tamano == id_tamano)
+
+        total = await db.scalar(count_query)
+
+        # Ejecutar consulta paginada
+        result = await db.execute(query.offset(skip).limit(limit))
         
-        return {
-            "success": True,
-            "total_count": total,
-            "expandido": True,
-            "data": variantes_expandidas
-        }
+        # ===== CONSTRUIR RESPUESTA EXPANDIDA =====
+        data = []
+        for row in result:
+            variante_obj = row[0]  # Objeto ProductoVariante
+            producto_obj = row[1]  # Objeto Producto (puede ser None)
+            talla_obj = row[2]     # Objeto CatTalla (puede ser None)
+            color_obj = row[3]     # Objeto CatColor (puede ser None)
+            tamano_obj = row[4]    # Objeto CatTamano (puede ser None)
+            
+            # Convertir variante base
+            variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
+            
+            # Agregar objetos relacionados si existen
+            variante_dict['producto'] = ProductoRead.model_validate(producto_obj).model_dump() if producto_obj else None
+            variante_dict['talla'] = TallaRead.model_validate(talla_obj).model_dump() if talla_obj else None
+            variante_dict['color'] = ColorRead.model_validate(color_obj).model_dump() if color_obj else None
+            variante_dict['tamano'] = TamanoRead.model_validate(tamano_obj).model_dump() if tamano_obj else None
+            
+            data.append(variante_dict)
+
     else:
-        # 12) Respuesta estándar sin expandir
-        return {
-            "success": True,
-            "total_count": total,
-            "expandido": False,
-            "data": [ProductoVarianteRead.model_validate(v) for v in variantes]
-        }
+        # ===== CONSULTA SIN JOINS (VERSIÓN SIMPLIFICADA) =====
+        query = select(ProductoVariante).where(ProductoVariante.id_estado == estado_activo_id)
+        
+        # Aplicar filtros
+        if id_producto:
+            query = query.where(ProductoVariante.id_producto == id_producto)
+        if sku_variante:
+            query = query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
+        if codigo_barras_var:
+            query = query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
+        if precio is not None:
+            query = query.where(ProductoVariante.precio == precio)
+        if precio_min is not None:
+            query = query.where(ProductoVariante.precio >= precio_min)
+        if precio_max is not None:
+            query = query.where(ProductoVariante.precio <= precio_max)
+        if id_talla:
+            query = query.where(ProductoVariante.id_talla == id_talla)
+        if id_color:
+            query = query.where(ProductoVariante.id_color == id_color)
+        if id_tamano:
+            query = query.where(ProductoVariante.id_tamano == id_tamano)
 
-@router.get("/combo", response_model=dict)
-async def listar_variantes_combo(
-    id_producto: Optional[UUID] = Query(None, description="Filtro por producto padre"),
-    db: AsyncSession = Depends(get_async_db)
-):
-    """Endpoint optimizado para llenar ComboBox de variantes de productos"""
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    query = select(
-        ProductoVariante.id_producto_variante, 
-        ProductoVariante.sku_variante,
-        ProductoVariante.precio
-    ).where(ProductoVariante.id_estado == estado_activo_id)
-    
-    if id_producto:
-        query = query.where(ProductoVariante.id_producto == id_producto)
-    
-    query = query.order_by(ProductoVariante.sku_variante)
-    
-    result = await db.execute(query)
-    variantes = [
-        {
-            "id": str(row[0]), 
-            "sku_variante": row[1],
-            "precio": float(row[2]) if row[2] else 0.0,
-            "display": f"{row[1]} - ${row[2] or 0:.2f}"
-        } 
-        for row in result
-    ]
-    
-    return {"success": True, "data": variantes}
+        # Contar total
+        count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
+            ProductoVariante.id_estado == estado_activo_id
+        )
+        
+        # Aplicar mismos filtros al conteo
+        if id_producto:
+            count_query = count_query.where(ProductoVariante.id_producto == id_producto)
+        if sku_variante:
+            count_query = count_query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
+        if codigo_barras_var:
+            count_query = count_query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
+        if precio is not None:
+            count_query = count_query.where(ProductoVariante.precio == precio)
+        if precio_min is not None:
+            count_query = count_query.where(ProductoVariante.precio >= precio_min)
+        if precio_max is not None:
+            count_query = count_query.where(ProductoVariante.precio <= precio_max)
+        if id_talla:
+            count_query = count_query.where(ProductoVariante.id_talla == id_talla)
+        if id_color:
+            count_query = count_query.where(ProductoVariante.id_color == id_color)
+        if id_tamano:
+            count_query = count_query.where(ProductoVariante.id_tamano == id_tamano)
 
-@router.get("/producto/{id_producto}", response_model=dict)
-async def listar_variantes_por_producto(
-    id_producto: UUID,
-    skip: int = 0,
-    limit: int = 100,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Lista todas las variantes de un producto específico.
-    """
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    # Verificar que el producto existe y está activo
-    producto_query = select(Producto).where(
-        Producto.id_producto == id_producto,
-        Producto.id_estado == estado_activo_id
-    )
-    producto_result = await db.execute(producto_query)
-    producto = producto_result.scalar_one_or_none()
-    
-    if not producto:
-        raise HTTPException(status_code=404, detail="Producto no encontrado")
-    
-    # Obtener variantes del producto
-    stmt = select(ProductoVariante).where(
-        ProductoVariante.id_producto == id_producto,
-        ProductoVariante.id_estado == estado_activo_id
-    ).order_by(ProductoVariante.sku_variante)
-    
-    # Contar total
-    total_stmt = select(func.count()).select_from(stmt.subquery())
-    total = await db.scalar(total_stmt)
-    
-    # Ejecutar con paginación
-    result = await db.execute(stmt.offset(skip).limit(limit))
-    variantes = result.scalars().all()
-    
+        total = await db.scalar(count_query)
+
+        # Ejecutar consulta paginada
+        result = await db.execute(query.offset(skip).limit(limit))
+        variantes = result.scalars().all()
+
+        # Serializar datos sin expansión
+        data = [ProductoVarianteRead.model_validate(v).model_dump() for v in variantes]
+
     return {
         "success": True,
         "total_count": total,
-        "producto": ProductoRead.model_validate(producto).model_dump(),
-        "data": [ProductoVarianteRead.model_validate(v) for v in variantes]
+        "expandido": expandir,
+        "filtros_aplicados": {
+            "basicos": {
+                "id_producto": str(id_producto) if id_producto else None,
+                "sku_variante": sku_variante,
+                "codigo_barras_var": codigo_barras_var
+            },
+            "precio": {
+                "exacto": precio,
+                "min": precio_min,
+                "max": precio_max
+            },
+            "atributos": {
+                "id_talla": str(id_talla) if id_talla else None,
+                "id_color": str(id_color) if id_color else None,
+                "id_tamano": str(id_tamano) if id_tamano else None
+            }
+        },
+        "paginacion": {
+            "skip": skip,
+            "limit": limit,
+            "total": total,
+            "pagina_actual": (skip // limit) + 1,
+            "total_paginas": ((total - 1) // limit) + 1 if total > 0 else 0
+        },
+        "data": data
     }
 
-@router.get("/{id_producto_variante}", 
-response_model=ProductoVarianteRead)
+@router.get("/{id_producto_variante}", response_model=dict)
 async def obtener_variante(
     id_producto_variante: UUID,
+    expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Obtiene una variante de producto por su ID, sólo si está en estado "activo".
+    Obtiene una variante por su ID, con opción de expandir objetos relacionados.
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
-
-    stmt = select(ProductoVariante).where(
-        ProductoVariante.id_producto_variante == id_producto_variante,
-        ProductoVariante.id_estado == estado_activo_id
-    )
-    result = await db.execute(stmt)
-    variante = result.scalar_one_or_none()
-
-    if not variante:
-        raise HTTPException(status_code=404, detail="Variante de producto no encontrada")
-
-    return ProductoVarianteRead.model_validate(variante)
+    
+    if expandir:
+        # Consulta con joins para objetos relacionados
+        query = select(
+            ProductoVariante,
+            Producto,
+            CatTalla,
+            CatColor,
+            CatTamano
+        ).select_from(
+            ProductoVariante.__table__
+            .outerjoin(
+                Producto.__table__,
+                and_(
+                    ProductoVariante.id_producto == Producto.id_producto,
+                    Producto.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                CatTalla.__table__,
+                and_(
+                    ProductoVariante.id_talla == CatTalla.id_talla,
+                    CatTalla.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                CatColor.__table__,
+                and_(
+                    ProductoVariante.id_color == CatColor.id_color,
+                    CatColor.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                CatTamano.__table__,
+                and_(
+                    ProductoVariante.id_tamano == CatTamano.id_tamano,
+                    CatTamano.id_estado == estado_activo_id
+                )
+            )
+        ).where(
+            and_(
+                ProductoVariante.id_producto_variante == id_producto_variante,
+                ProductoVariante.id_estado == estado_activo_id
+            )
+        )
+        
+        result = await db.execute(query)
+        row = result.first()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Variante no encontrada")
+        
+        # Construir respuesta expandida
+        variante_obj = row[0]
+        producto_obj = row[1]
+        talla_obj = row[2]
+        color_obj = row[3]
+        tamano_obj = row[4]
+        
+        variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
+        
+        variante_dict['producto'] = ProductoRead.model_validate(producto_obj).model_dump() if producto_obj else None
+        variante_dict['talla'] = TallaRead.model_validate(talla_obj).model_dump() if talla_obj else None
+        variante_dict['color'] = ColorRead.model_validate(color_obj).model_dump() if color_obj else None
+        variante_dict['tamano'] = TamanoRead.model_validate(tamano_obj).model_dump() if tamano_obj else None
+        
+        return {
+            "success": True,
+            "expandido": expandir,
+            "data": variante_dict
+        }
+    
+    else:
+        # Consulta simple sin joins
+        query = select(ProductoVariante).where(
+            and_(
+                ProductoVariante.id_producto_variante == id_producto_variante,
+                ProductoVariante.id_estado == estado_activo_id
+            )
+        )
+        
+        result = await db.execute(query)
+        variante = result.scalar_one_or_none()
+        
+        if not variante:
+            raise HTTPException(status_code=404, detail="Variante no encontrada")
+        
+        return {
+            "success": True,
+            "expandido": expandir,
+            "data": ProductoVarianteRead.model_validate(variante).model_dump()
+        }
 
 @router.post("/", response_model=dict, status_code=201)
 async def crear_variante(
-    entrada: ProductoVarianteCreate,
+    variante_data: ProductoVarianteCreate,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Crea una nueva variante de producto. Aplica RLS y defaults de servidor.
+    Crea una nueva variante de producto.
     """
-    # 1) Recuperar tenant y usuario del contexto RLS
-    ctx = await obtener_contexto(db)
+    from uuid import uuid4
+    from sqlalchemy import text
     
-    # 2) Verificar que el producto padre existe y está activo
+    # Obtener estado activo y contexto
     estado_activo_id = await get_estado_id_por_clave("act", db)
-    producto_query = select(Producto).where(
-        Producto.id_producto == entrada.id_producto,
-        Producto.id_estado == estado_activo_id
-    )
-    producto_result = await db.execute(producto_query)
-    producto = producto_result.scalar_one_or_none()
+    tenant_id, user_id = await obtener_contexto(db)
     
-    if not producto:
-        raise HTTPException(status_code=400, detail="Producto padre no encontrado o inactivo")
-
-    # 3) Construir instancia ORM
-    nueva = ProductoVariante(
-        id_producto=entrada.id_producto,
-        id_talla=entrada.id_talla,
-        id_color=entrada.id_color,
-        id_tamano=entrada.id_tamano,
-        sku_variante=entrada.sku_variante,
-        codigo_barras_var=entrada.codigo_barras_var,
-        precio=entrada.precio or 0,
-        peso_gr=entrada.peso_gr or 0,
-        vida_util_dias=entrada.vida_util_dias,
-        created_by=ctx["user_id"],
-        modified_by=ctx["user_id"]
+    # Crear nueva variante
+    nueva_variante = ProductoVariante(
+        id_empresa=tenant_id,
+        id_estado=estado_activo_id,
+        created_by=user_id,
+        modified_by=user_id,
+        **variante_data.model_dump()
     )
-    db.add(nueva)
-
-    # 4) Ejecutar INSERT y refrescar antes de commit para respetar RLS
-    await db.flush()        # Realiza INSERT RETURNING …
-    await db.refresh(nueva) # Ejecuta SELECT dentro de la misma tx
-
-    # 5) Finalizar tx
-    await db.commit()
-
-    # 6) Devolver datos completos
-    return {"success": True, "data": 
-ProductoVarianteRead.model_validate(nueva)}
+    
+    try:
+        db.add(nueva_variante)
+        await db.commit()
+        await db.refresh(nueva_variante)
+        
+        return {
+            "success": True,
+            "message": "Variante creada exitosamente",
+            "data": ProductoVarianteRead.model_validate(nueva_variante).model_dump()
+        }
+    except Exception as e:
+        await db.rollback()
+        if "uq_variante_empresa_sku" in str(e):
+            raise HTTPException(status_code=409, detail="Ya existe una variante con ese SKU en la empresa")
+        elif "uq_variante_empresa_codbar" in str(e):
+            raise HTTPException(status_code=409, detail="Ya existe una variante con ese código de barras en la empresa")
+        else:
+            raise HTTPException(status_code=400, detail="Error al crear la variante")
 
 @router.put("/{id_producto_variante}", response_model=dict)
 async def actualizar_variante(
     id_producto_variante: UUID,
-    entrada: ProductoVarianteUpdate,
+    variante_data: ProductoVarianteUpdate,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Actualiza datos de una variante de producto en estado "activo".
-    Solo actualiza los campos que se proporcionen en el request.
+    Actualiza una variante existente.
     """
-    # 1) Obtener UUID del estado "activo"
     estado_activo_id = await get_estado_id_por_clave("act", db)
-
-    # 2) Buscar la variante existente
-    stmt = select(ProductoVariante).where(
-        ProductoVariante.id_producto_variante == id_producto_variante,
-        ProductoVariante.id_estado == estado_activo_id
-    )
-    result = await db.execute(stmt)
-    variante = result.scalar_one_or_none()
-    if not variante:
-        raise HTTPException(status_code=404, detail="Variante de producto no encontrada")
-
-    # 3) Obtener contexto del usuario
-    ctx = await obtener_contexto(db)
-
-    # 4) Si se cambia el producto padre, verificar que existe
-    if entrada.id_producto is not None and entrada.id_producto != variante.id_producto:
-        producto_query = select(Producto).where(
-            Producto.id_producto == entrada.id_producto,
-            Producto.id_estado == estado_activo_id
-        )
-        producto_result = await db.execute(producto_query)
-        producto = producto_result.scalar_one_or_none()
-        
-        if not producto:
-            raise HTTPException(status_code=400, detail="Producto padre no encontrado o inactivo")
-
-    # 5) Actualizar solo los campos proporcionados
-    if entrada.id_producto is not None:
-        variante.id_producto = entrada.id_producto
-    if entrada.id_talla is not None:
-        variante.id_talla = entrada.id_talla
-    if entrada.id_color is not None:
-        variante.id_color = entrada.id_color
-    if entrada.id_tamano is not None:
-        variante.id_tamano = entrada.id_tamano
-    if entrada.sku_variante is not None:
-        variante.sku_variante = entrada.sku_variante
-    if entrada.codigo_barras_var is not None:
-        variante.codigo_barras_var = entrada.codigo_barras_var
-    if entrada.precio is not None:
-        variante.precio = entrada.precio
-    if entrada.peso_gr is not None:
-        variante.peso_gr = entrada.peso_gr
-    if entrada.vida_util_dias is not None:
-        variante.vida_util_dias = entrada.vida_util_dias
+    tenant_id, user_id = await obtener_contexto(db)
     
-    # Actualizar metadatos de auditoría
-    variante.modified_by = ctx["user_id"]
+    # Buscar variante existente
+    query = select(ProductoVariante).where(
+        and_(
+            ProductoVariante.id_producto_variante == id_producto_variante,
+            ProductoVariante.id_estado == estado_activo_id
+        )
+    )
+    
+    result = await db.execute(query)
+    variante = result.scalar_one_or_none()
+    
+    if not variante:
+        raise HTTPException(status_code=404, detail="Variante no encontrada")
+    
+    # Actualizar campos proporcionados
+    update_data = variante_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(variante, field, value)
+    
+    variante.modified_by = user_id
+    
+    try:
+        await db.commit()
+        await db.refresh(variante)
+        
+        return {
+            "success": True,
+            "message": "Variante actualizada exitosamente",
+            "data": ProductoVarianteRead.model_validate(variante).model_dump()
+        }
+    except Exception as e:
+        await db.rollback()
+        if "uq_variante_empresa_sku" in str(e):
+            raise HTTPException(status_code=409, detail="Ya existe una variante con ese SKU en la empresa")
+        elif "uq_variante_empresa_codbar" in str(e):
+            raise HTTPException(status_code=409, detail="Ya existe una variante con ese código de barras en la empresa")
+        else:
+            raise HTTPException(status_code=400, detail="Error al actualizar la variante")
 
-    # 6) Guardar cambios
-    await db.flush()
-    await db.refresh(variante)
-    await db.commit()
-
-    return {"success": True, "data": 
-ProductoVarianteRead.model_validate(variante)}
-
-@router.delete("/{id_producto_variante}", status_code=200)
+@router.delete("/{id_producto_variante}", response_model=dict)
 async def eliminar_variante(
     id_producto_variante: UUID,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Elimina físicamente una variante de producto. Se respetan políticas RLS.
+    Elimina (desactiva) una variante cambiando su estado a "inactivo".
     """
-    # Verificar que la variante existe
-    result = await db.execute(
-        
-select(ProductoVariante).where(ProductoVariante.id_producto_variante == 
-id_producto_variante)
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    estado_inactivo_id = await get_estado_id_por_clave("ina", db)
+    tenant_id, user_id = await obtener_contexto(db)
+    
+    # Buscar variante existente
+    query = select(ProductoVariante).where(
+        and_(
+            ProductoVariante.id_producto_variante == id_producto_variante,
+            ProductoVariante.id_estado == estado_activo_id
+        )
     )
+    
+    result = await db.execute(query)
     variante = result.scalar_one_or_none()
+    
     if not variante:
-        raise HTTPException(status_code=404, detail="Variante de producto no encontrada")
-
-    # Eliminar físicamente
-    await db.execute(
+        raise HTTPException(status_code=404, detail="Variante no encontrada")
+    
+    # Cambiar estado a inactivo
+    variante.id_estado = estado_inactivo_id
+    variante.modified_by = user_id
+    
+    try:
+        await db.commit()
         
-delete(ProductoVariante).where(ProductoVariante.id_producto_variante == id_producto_variante)
-    )
-    await db.commit()
+        return {
+            "success": True,
+            "message": "Variante eliminada exitosamente"
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Error al eliminar la variante")
 
-    return {"success": True, "message": "Variante de producto eliminada permanentemente"}
+# ===== ENDPOINTS ADICIONALES =====
+
+@router.get("/producto/{id_producto}/variantes", response_model=dict)
+async def listar_variantes_por_producto(
+    id_producto: UUID = Path(..., description="ID del producto"),
+    expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
+    skip: int = Query(0, ge=0, description="Número de registros a omitir"),
+    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros a retornar"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Lista todas las variantes activas de un producto específico.
+    """
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    if expandir:
+        # Consulta con joins para objetos relacionados
+        query = select(
+            ProductoVariante,
+            Producto,
+            CatTalla,
+            CatColor,
+            CatTamano
+        ).select_from(
+            ProductoVariante.__table__
+            .outerjoin(
+                Producto.__table__,
+                and_(
+                    ProductoVariante.id_producto == Producto.id_producto,
+                    Producto.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                CatTalla.__table__,
+                and_(
+                    ProductoVariante.id_talla == CatTalla.id_talla,
+                    CatTalla.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                CatColor.__table__,
+                and_(
+                    ProductoVariante.id_color == CatColor.id_color,
+                    CatColor.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                CatTamano.__table__,
+                and_(
+                    ProductoVariante.id_tamano == CatTamano.id_tamano,
+                    CatTamano.id_estado == estado_activo_id
+                )
+            )
+        ).where(
+            and_(
+                ProductoVariante.id_producto == id_producto,
+                ProductoVariante.id_estado == estado_activo_id
+            )
+        )
+
+        # Contar total
+        count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
+            and_(
+                ProductoVariante.id_producto == id_producto,
+                ProductoVariante.id_estado == estado_activo_id
+            )
+        )
+        total = await db.scalar(count_query)
+
+        # Obtener variantes paginadas
+        result = await db.execute(query.offset(skip).limit(limit))
+        
+        # Construir respuesta expandida
+        data = []
+        for row in result:
+            variante_obj = row[0]
+            producto_obj = row[1]
+            talla_obj = row[2]
+            color_obj = row[3]
+            tamano_obj = row[4]
+            
+            variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
+            
+            variante_dict['producto'] = ProductoRead.model_validate(producto_obj).model_dump() if producto_obj else None
+            variante_dict['talla'] = TallaRead.model_validate(talla_obj).model_dump() if talla_obj else None
+            variante_dict['color'] = ColorRead.model_validate(color_obj).model_dump() if color_obj else None
+            variante_dict['tamano'] = TamanoRead.model_validate(tamano_obj).model_dump() if tamano_obj else None
+            
+            data.append(variante_dict)
+    
+    else:
+        # Consulta simple sin joins
+        count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
+            and_(
+                ProductoVariante.id_producto == id_producto,
+                ProductoVariante.id_estado == estado_activo_id
+            )
+        )
+        total = await db.scalar(count_query)
+        
+        query = select(ProductoVariante).where(
+            and_(
+                ProductoVariante.id_producto == id_producto,
+                ProductoVariante.id_estado == estado_activo_id
+            )
+        ).offset(skip).limit(limit)
+        
+        result = await db.execute(query)
+        variantes = result.scalars().all()
+        
+        data = [ProductoVarianteRead.model_validate(v).model_dump() for v in variantes]
+    
+    return {
+        "success": True,
+        "total_count": total,
+        "expandido": expandir,
+        "paginacion": {
+            "skip": skip,
+            "limit": limit,
+            "total": total,
+            "pagina_actual": (skip // limit) + 1,
+            "total_paginas": ((total - 1) // limit) + 1 if total > 0 else 0
+        },
+        "data": data
+    }
