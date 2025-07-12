@@ -29,6 +29,8 @@ from umedida import UMedida, UMedidaRead
 from categoria import Categoria, CategoriaRead
 from subcategoria import Subcategoria, SubcategoriaRead
 
+from producto_variante import ProductoVariante, CatTalla, CatColor, CatTamano
+
 # --------------------------------------
 # Definición del modelo ORM (SQLAlchemy)
 # --------------------------------------
@@ -782,3 +784,232 @@ async def eliminar_producto(
     await db.execute(delete(Producto).where(Producto.id_producto == id_producto))
     await db.commit()
     return {"success": True, "message": "Producto eliminado permanentemente"}
+
+# ===== NUEVO ENDPOINT INTELIGENTE PARA BÚSQUEDA POR CÓDIGO =====
+# Agregar al archivo producto.py
+
+@router.get("/buscar_por_codigo/{codigo}", response_model=dict)
+async def buscar_producto_por_codigo(
+    codigo: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Endpoint inteligente que busca un producto por código (SKU, código de barras).
+    
+    Implementa búsqueda híbrida:
+    1. Busca primero como variante específica
+    2. Si no encuentra, busca como producto base
+    3. Retorna información optimizada para punto de venta
+    
+    Returns:
+        dict: Información del producto/variante encontrado con acción sugerida
+    """
+    
+    if not codigo or not codigo.strip():
+        raise HTTPException(status_code=400, detail="El código no puede estar vacío")
+    
+    codigo = codigo.strip()
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    # =================
+    # PASO 1: Buscar como variante específica
+    # =================
+    variante_query = select(
+        ProductoVariante.id_producto_variante,
+        ProductoVariante.id_producto,
+        ProductoVariante.sku_variante,
+        ProductoVariante.codigo_barras_var,
+        ProductoVariante.precio,
+        ProductoVariante.peso_gr,
+        ProductoVariante.vida_util_dias,
+        Producto.nombre.label('producto_nombre'),
+        Producto.descripcion.label('producto_descripcion'),
+        Producto.precio_base,
+        Producto.es_kit,
+        # Información de la talla
+        CatTalla.nombre.label('talla_nombre'),
+        # Información del color  
+        CatColor.nombre.label('color_nombre'),
+        # Información del tamaño
+        CatTamano.nombre.label('tamano_nombre')
+    ).select_from(
+        ProductoVariante.__table__
+        .join(
+            Producto.__table__,
+            and_(
+                ProductoVariante.id_producto == Producto.id_producto,
+                Producto.id_estado == estado_activo_id
+            )
+        )
+        .outerjoin(CatTalla.__table__, ProductoVariante.id_talla == CatTalla.id_talla)
+        .outerjoin(CatColor.__table__, ProductoVariante.id_color == CatColor.id_color)
+        .outerjoin(CatTamano.__table__, ProductoVariante.id_tamano == CatTamano.id_tamano)
+    ).where(
+        and_(
+            ProductoVariante.id_estado == estado_activo_id,
+            or_(
+                ProductoVariante.sku_variante.ilike(f"%{codigo}%"),
+                ProductoVariante.codigo_barras_var.ilike(f"%{codigo}%")
+            )
+        )
+    )
+    
+    result = await db.execute(variante_query)
+    variante_row = result.first()
+    
+    if variante_row:
+        # ENCONTRADO COMO VARIANTE ESPECÍFICA
+        variante_info = {
+            "id_producto_variante": str(variante_row.id_producto_variante),
+            "id_producto": str(variante_row.id_producto),
+            "sku_variante": variante_row.sku_variante,
+            "codigo_barras_var": variante_row.codigo_barras_var,
+            "precio": float(variante_row.precio) if variante_row.precio else float(variante_row.precio_base) if variante_row.precio_base else 0.0,
+            "peso_gr": float(variante_row.peso_gr) if variante_row.peso_gr else 0.0,
+            "vida_util_dias": variante_row.vida_util_dias,
+            "producto_nombre": variante_row.producto_nombre,
+            "producto_descripcion": variante_row.producto_descripcion,
+            "es_kit": variante_row.es_kit,
+            "atributos": {
+                "talla": variante_row.talla_nombre,
+                "color": variante_row.color_nombre, 
+                "tamano": variante_row.tamano_nombre
+            }
+        }
+        
+        return {
+            "success": True,
+            "tipo": "variante_especifica",
+            "accion_sugerida": "agregar_directo",
+            "mensaje": f"Variante específica encontrada: {variante_row.sku_variante}",
+            "variante": variante_info,
+            "producto": None,
+            "variantes": []
+        }
+    
+    # =================
+    # PASO 2: Buscar como producto base
+    # =================
+    producto_query = select(
+        Producto.id_producto,
+        Producto.sku,
+        Producto.codigo_barras,
+        Producto.nombre,
+        Producto.descripcion,
+        Producto.precio_base,
+        Producto.es_kit,
+        Producto.vida_util_dias
+    ).where(
+        and_(
+            Producto.id_estado == estado_activo_id,
+            or_(
+                Producto.sku.ilike(f"%{codigo}%"),
+                Producto.codigo_barras.ilike(f"%{codigo}%"),
+                Producto.nombre.ilike(f"%{codigo}%")
+            )
+        )
+    )
+    
+    result = await db.execute(producto_query)
+    producto_row = result.first()
+    
+    if producto_row:
+        # ENCONTRADO COMO PRODUCTO BASE - Buscar sus variantes
+        variantes_query = select(
+            ProductoVariante.id_producto_variante,
+            ProductoVariante.sku_variante,
+            ProductoVariante.codigo_barras_var,
+            ProductoVariante.precio,
+            ProductoVariante.peso_gr,
+            # Información de atributos
+            CatTalla.nombre.label('talla_nombre'),
+            CatColor.nombre.label('color_nombre'),
+            CatTamano.nombre.label('tamano_nombre')
+        ).select_from(
+            ProductoVariante.__table__
+            .outerjoin(CatTalla.__table__, ProductoVariante.id_talla == CatTalla.id_talla)
+            .outerjoin(CatColor.__table__, ProductoVariante.id_color == CatColor.id_color)
+            .outerjoin(CatTamano.__table__, ProductoVariante.id_tamano == CatTamano.id_tamano)
+        ).where(
+            and_(
+                ProductoVariante.id_producto == producto_row.id_producto,
+                ProductoVariante.id_estado == estado_activo_id
+            )
+        ).order_by(ProductoVariante.sku_variante)
+        
+        result = await db.execute(variantes_query)
+        variantes_rows = result.fetchall()
+        
+        # Construir información del producto
+        producto_info = {
+            "id_producto": str(producto_row.id_producto),
+            "sku": producto_row.sku,
+            "codigo_barras": producto_row.codigo_barras,
+            "nombre": producto_row.nombre,
+            "descripcion": producto_row.descripcion,
+            "precio_base": float(producto_row.precio_base) if producto_row.precio_base else 0.0,
+            "es_kit": producto_row.es_kit,
+            "vida_util_dias": producto_row.vida_util_dias,
+            "total_variantes": len(variantes_rows)
+        }
+        
+        # Construir lista de variantes
+        variantes_info = []
+        for var_row in variantes_rows:
+            precio_final = float(var_row.precio) if var_row.precio else float(producto_row.precio_base) if producto_row.precio_base else 0.0
+            
+            # Construir descripción de atributos
+            atributos = []
+            if var_row.talla_nombre:
+                atributos.append(f"Talla: {var_row.talla_nombre}")
+            if var_row.color_nombre:
+                atributos.append(f"Color: {var_row.color_nombre}")
+            if var_row.tamano_nombre:
+                atributos.append(f"Tamaño: {var_row.tamano_nombre}")
+            
+            descripcion_variante = " | ".join(atributos) if atributos else "Estándar"
+            
+            variantes_info.append({
+                "id_producto_variante": str(var_row.id_producto_variante),
+                "sku_variante": var_row.sku_variante,
+                "codigo_barras_var": var_row.codigo_barras_var,
+                "precio": precio_final,
+                "peso_gr": float(var_row.peso_gr) if var_row.peso_gr else 0.0,
+                "descripcion_variante": descripcion_variante,
+                "atributos": {
+                    "talla": var_row.talla_nombre,
+                    "color": var_row.color_nombre,
+                    "tamano": var_row.tamano_nombre
+                }
+            })
+        
+        # Determinar acción sugerida
+        if len(variantes_rows) == 1:
+            accion = "agregar_directo"
+            mensaje = f"Producto con una variante encontrado: {producto_row.nombre}"
+        else:
+            accion = "mostrar_selector"
+            mensaje = f"Producto encontrado con {len(variantes_rows)} variantes disponibles"
+        
+        return {
+            "success": True,
+            "tipo": "producto_base",
+            "accion_sugerida": accion,
+            "mensaje": mensaje,
+            "variante": variantes_info[0] if len(variantes_rows) == 1 else None,
+            "producto": producto_info,
+            "variantes": variantes_info
+        }
+    
+    # =================
+    # NO ENCONTRADO
+    # =================
+    return {
+        "success": False,
+        "tipo": "no_encontrado",
+        "accion_sugerida": "mostrar_error",
+        "mensaje": f"No se encontró ningún producto con el código: {codigo}",
+        "variante": None,
+        "producto": None,
+        "variantes": []
+    }
