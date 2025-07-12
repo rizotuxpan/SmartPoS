@@ -783,8 +783,8 @@ async def eliminar_producto(
     await db.commit()
     return {"success": True, "message": "Producto eliminado permanentemente"}
 
-# ===== NUEVO ENDPOINT INTELIGENTE PARA BÚSQUEDA POR CÓDIGO =====
-# Agregar al archivo producto.py
+# ===== ENDPOINT CORREGIDO - Maneja Productos sin Variantes =====
+# Reemplazar en producto.py
 
 @router.get("/buscar_por_codigo/{codigo}", response_model=dict)
 async def buscar_producto_por_codigo(
@@ -797,10 +797,8 @@ async def buscar_producto_por_codigo(
     Implementa búsqueda híbrida:
     1. Busca primero como variante específica
     2. Si no encuentra, busca como producto base
-    3. Retorna información optimizada para punto de venta
-    
-    Returns:
-        dict: Información del producto/variante encontrado con acción sugerida
+    3. Si el producto base no tiene variantes, lo trata como variante única
+    4. Retorna información optimizada para punto de venta
     """
     
     if not codigo or not codigo.strip():
@@ -812,7 +810,6 @@ async def buscar_producto_por_codigo(
     # =================
     # PASO 1: Buscar como variante específica
     # =================
-    # Usamos consulta SQL directa para evitar imports circulares
     variante_query = text("""
         SELECT 
             pv.id_producto_variante,
@@ -960,6 +957,39 @@ async def buscar_producto_por_codigo(
             "total_variantes": len(variantes_rows)
         }
         
+        # ===== NUEVO: Manejar productos sin variantes =====
+        if len(variantes_rows) == 0:
+            # PRODUCTO SIN VARIANTES - Crear variante virtual del producto base
+            variante_virtual = {
+                "id_producto_variante": f"virtual_{producto_row.id_producto}",  # ID virtual
+                "id_producto": str(producto_row.id_producto),
+                "sku_variante": producto_row.sku or f"{producto_row.nombre}_BASE",
+                "codigo_barras_var": producto_row.codigo_barras,
+                "precio": float(producto_row.precio_base) if producto_row.precio_base else 0.0,
+                "peso_gr": 0.0,
+                "vida_util_dias": producto_row.vida_util_dias,
+                "producto_nombre": producto_row.nombre,
+                "producto_descripcion": producto_row.descripcion,
+                "es_kit": producto_row.es_kit,
+                "descripcion_variante": "Producto Base",
+                "atributos": {
+                    "talla": None,
+                    "color": None,
+                    "tamano": None
+                }
+            }
+            
+            return {
+                "success": True,
+                "tipo": "producto_sin_variantes",
+                "accion_sugerida": "agregar_directo",
+                "mensaje": f"Producto base encontrado: {producto_row.nombre}",
+                "variante": variante_virtual,
+                "producto": producto_info,
+                "variantes": []
+            }
+        
+        # ===== PRODUCTO CON VARIANTES (lógica original) =====
         # Construir lista de variantes
         variantes_info = []
         for var_row in variantes_rows:
