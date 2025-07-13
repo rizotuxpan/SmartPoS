@@ -9,8 +9,8 @@ from sqlalchemy import select, text
 from typing import Optional
 
 # Importar modelos (ajusta según tu estructura)
-from models.producto import Producto
-from models.producto_variante import ProductoVariante
+from producto import Producto
+from producto_variante import ProductoVariante
 from utils.estado import get_estado_id_por_clave
 from utils.contexto import obtener_contexto
 
