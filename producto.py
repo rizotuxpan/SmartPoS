@@ -1,4 +1,4 @@
-# producto.py - VERSIÓN CORREGIDA PARA SQLALCHEMY 2.x
+    # producto.py - VERSIÓN CORREGIDA PARA SQLALCHEMY 2.x
 # ---------------------------
 # Módulo de endpoints REST para gestión de la entidad Producto.
 # Incluye objetos relacionados completos y filtros avanzados
@@ -167,336 +167,254 @@ class ProductoReadExpanded(ProductoBase):
 # ---------------------------
 router = APIRouter()
 
-@router.get("/", response_model=dict)
-async def listar_productos(
-    # ===== FILTROS BÁSICOS =====
-    nombre: Optional[str] = Query(None, description="Filtro por nombre del producto"),
-    sku: Optional[str] = Query(None, description="Filtro por SKU del producto"),
-    codigo_barras: Optional[str] = Query(None, description="Filtro por código de barras"),
-    
-    # ===== FILTROS DE PRECIO EXTENDIDOS =====
-    precio: Optional[float] = Query(None, description="Precio exacto"),
-    precio_min: Optional[float] = Query(None, description="Precio mínimo (>=)"),
-    precio_max: Optional[float] = Query(None, description="Precio máximo (<=)"),
-    precio_mayor: Optional[float] = Query(None, description="Precio mayor que (>)"),
-    precio_menor: Optional[float] = Query(None, description="Precio menor que (<)"),
-    precio_texto: Optional[str] = Query(None, description="Búsqueda textual en precio"),
-    
-    # ===== FILTROS POR NOMBRES DE ENTIDADES RELACIONADAS =====
-    marca_nombre: Optional[str] = Query(None, description="Filtro por nombre de marca"),
-    categoria_nombre: Optional[str] = Query(None, description="Filtro por nombre de categoría"),
-    subcategoria_nombre: Optional[str] = Query(None, description="Filtro por nombre de subcategoría"),
-    
-    # ===== PARÁMETROS DE CONFIGURACIÓN =====
-    expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
-    skip: int = Query(0, ge=0, description="Número de registros a omitir"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de registros a retornar"),
+# producto.py - ENDPOINT CREAR PRODUCTO ACTUALIZADO
+# ---------------------------
+# Reemplazar el endpoint de creación de productos existente
+
+from utils.variante_base import crear_variante_base_automatica
+
+@router.post("/", response_model=dict, status_code=201)
+async def crear_producto(
+    entrada: ProductoCreate,
+    crear_variante_base: bool = Query(True, description="Crear variante base automáticamente si no se especifican variantes"),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Lista productos en estado "activo" con paginación, filtros opcionales extendidos
-    y opción de expandir objetos relacionados.
+    Crea un nuevo producto con variante base automática.
+    
+    NUEVA FUNCIONALIDAD:
+    - Si crear_variante_base=True (default), siempre crea una variante base
+    - Garantiza que el producto sea vendible inmediatamente
+    - Mantiene consistencia en la base de datos
     """
+    
+    ctx = await obtener_contexto(db)
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
-    if expandir:
-        # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS =====
-        # Crear query base
-        query = select(
-            Producto,
-            Marca,
-            UMedida,
-            Categoria,
-            Subcategoria
+    # Verificar que el SKU no exista
+    sku_existente = await db.execute(
+        select(Producto).where(Producto.sku == entrada.sku)
+    )
+    if sku_existente.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409, 
+            detail=f"Ya existe un producto con el SKU: {entrada.sku}"
         )
-        
-        # Especificar FROM explícitamente para SQLAlchemy 2.x
-        query = query.select_from(
-            Producto.__table__
-            .outerjoin(
-                Marca.__table__,
-                and_(
-                    Producto.id_marca == Marca.id_marca,
-                    Marca.id_estado == estado_activo_id
-                )
-            )
-            .outerjoin(
-                UMedida.__table__,
-                and_(
-                    Producto.id_umedida == UMedida.id_umedida,
-                    UMedida.id_estado == estado_activo_id
-                )
-            )
-            .outerjoin(
-                Categoria.__table__,
-                and_(
-                    Producto.id_categoria == Categoria.id_categoria,
-                    Categoria.id_estado == estado_activo_id
-                )
-            )
-            .outerjoin(
-                Subcategoria.__table__,
-                and_(
-                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
-                    Subcategoria.id_estado == estado_activo_id
-                )
-            )
-        )
-        
-        # Filtro base
-        query = query.where(Producto.id_estado == estado_activo_id)
-        
-        # ===== APLICAR FILTROS BÁSICOS =====
-        if nombre:
-            query = query.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            query = query.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            query = query.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
-        
-        # ===== APLICAR FILTROS DE PRECIO =====
-        if precio is not None:
-            query = query.where(Producto.precio_base == precio)
-        if precio_min is not None:
-            query = query.where(Producto.precio_base >= precio_min)
-        if precio_max is not None:
-            query = query.where(Producto.precio_base <= precio_max)
-        if precio_mayor is not None:
-            query = query.where(Producto.precio_base > precio_mayor)
-        if precio_menor is not None:
-            query = query.where(Producto.precio_base < precio_menor)
-        if precio_texto:
-            query = query.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
-        
-        # ===== APLICAR FILTROS DE ENTIDADES RELACIONADAS =====
-        if marca_nombre:
-            query = query.where(Marca.nombre.ilike(f"%{marca_nombre}%"))
-        if categoria_nombre:
-            query = query.where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
-        if subcategoria_nombre:
-            query = query.where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
-        
-        # ===== CONTAR TOTAL PARA PAGINACIÓN =====
-        count_query = select(func.count(Producto.id_producto)).select_from(
-            Producto.__table__
-            .outerjoin(
-                Marca.__table__,
-                and_(
-                    Producto.id_marca == Marca.id_marca,
-                    Marca.id_estado == estado_activo_id
-                )
-            )
-            .outerjoin(
-                Categoria.__table__,
-                and_(
-                    Producto.id_categoria == Categoria.id_categoria,
-                    Categoria.id_estado == estado_activo_id
-                )
-            )
-            .outerjoin(
-                Subcategoria.__table__,
-                and_(
-                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
-                    Subcategoria.id_estado == estado_activo_id
-                )
-            )
-        ).where(Producto.id_estado == estado_activo_id)
-        
-        # Aplicar los mismos filtros al count
-        if nombre:
-            count_query = count_query.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            count_query = count_query.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            count_query = count_query.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
-        if precio is not None:
-            count_query = count_query.where(Producto.precio_base == precio)
-        if precio_min is not None:
-            count_query = count_query.where(Producto.precio_base >= precio_min)
-        if precio_max is not None:
-            count_query = count_query.where(Producto.precio_base <= precio_max)
-        if precio_mayor is not None:
-            count_query = count_query.where(Producto.precio_base > precio_mayor)
-        if precio_menor is not None:
-            count_query = count_query.where(Producto.precio_base < precio_menor)
-        if precio_texto:
-            count_query = count_query.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
-        if marca_nombre:
-            count_query = count_query.where(Marca.nombre.ilike(f"%{marca_nombre}%"))
-        if categoria_nombre:
-            count_query = count_query.where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
-        if subcategoria_nombre:
-            count_query = count_query.where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
-        
-        total = await db.scalar(count_query)
-        
-        # Ejecutar consulta paginada
-        result = await db.execute(query.offset(skip).limit(limit))
-        
-        # ===== CONSTRUIR RESPUESTA EXPANDIDA =====
-        data = []
-        for row in result:
-            producto_obj = row[0]  # Objeto Producto
-            marca_obj = row[1]     # Objeto Marca (puede ser None)
-            umedida_obj = row[2]   # Objeto UMedida (puede ser None)
-            categoria_obj = row[3] # Objeto Categoria (puede ser None)
-            subcategoria_obj = row[4] # Objeto Subcategoria (puede ser None)
-            
-            # Convertir producto base
-            producto_dict = ProductoRead.model_validate(producto_obj).model_dump()
-            
-            # Agregar objetos relacionados si existen
-            producto_dict['marca'] = MarcaRead.model_validate(marca_obj).model_dump() if marca_obj else None
-            producto_dict['umedida'] = UMedidaRead.model_validate(umedida_obj).model_dump() if umedida_obj else None
-            producto_dict['categoria'] = CategoriaRead.model_validate(categoria_obj).model_dump() if categoria_obj else None
-            producto_dict['subcategoria'] = SubcategoriaRead.model_validate(subcategoria_obj).model_dump() if subcategoria_obj else None
-            
-            data.append(producto_dict)
     
-    else:
-        # ===== CONSULTA SIN JOINS (VERSIÓN SIMPLIFICADA) =====
-        query = select(Producto).where(Producto.id_estado == estado_activo_id)
-        
-        # Aplicar filtros básicos
-        if nombre:
-            query = query.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            query = query.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            query = query.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
-        
-        # Aplicar filtros de precio
-        if precio is not None:
-            query = query.where(Producto.precio_base == precio)
-        if precio_min is not None:
-            query = query.where(Producto.precio_base >= precio_min)
-        if precio_max is not None:
-            query = query.where(Producto.precio_base <= precio_max)
-        if precio_mayor is not None:
-            query = query.where(Producto.precio_base > precio_mayor)
-        if precio_menor is not None:
-            query = query.where(Producto.precio_base < precio_menor)
-        if precio_texto:
-            query = query.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
-        
-        # Para filtros de entidades relacionadas, agregar joins específicos
-        if marca_nombre:
-            query = query.join(Marca).where(
-                and_(
-                    Producto.id_marca == Marca.id_marca,
-                    Marca.id_estado == estado_activo_id,
-                    Marca.nombre.ilike(f"%{marca_nombre}%")
-                )
+    # Verificar código de barras si se proporciona
+    if entrada.codigo_barras:
+        codigo_existente = await db.execute(
+            select(Producto).where(Producto.codigo_barras == entrada.codigo_barras)
+        )
+        if codigo_existente.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409, 
+                detail=f"Ya existe un producto con el código de barras: {entrada.codigo_barras}"
             )
+    
+    try:
+        # ===== CREAR EL PRODUCTO =====
+        nuevo_producto = Producto(
+            sku=entrada.sku,
+            codigo_barras=entrada.codigo_barras,
+            nombre=entrada.nombre,
+            descripcion=entrada.descripcion,
+            precio_base=entrada.precio_base,
+            costo_u=entrada.costo_u,
+            es_kit=entrada.es_kit,
+            vida_util_dias=entrada.vida_util_dias,
+            linea=entrada.linea,
+            sublinea=entrada.sublinea,
+            articulo=entrada.articulo,
+            guid=entrada.guid,
+            
+            # Relaciones
+            id_marca=entrada.id_marca,
+            id_umedida=entrada.id_umedida,
+            id_categoria=entrada.id_categoria,
+            id_subcategoria=entrada.id_subcategoria,
+            
+            # Campos de auditoría
+            id_estado=estado_activo_id,
+            created_by=ctx["user_id"],
+            modified_by=ctx["user_id"]
+        )
         
-        if categoria_nombre:
-            query = query.join(Categoria).where(
-                and_(
-                    Producto.id_categoria == Categoria.id_categoria,
-                    Categoria.id_estado == estado_activo_id,
-                    Categoria.nombre.ilike(f"%{categoria_nombre}%")
+        db.add(nuevo_producto)
+        await db.flush()  # Para obtener el ID
+        await db.refresh(nuevo_producto)
+        
+        # ===== CREAR VARIANTE BASE AUTOMÁTICAMENTE =====
+        variante_base = None
+        if crear_variante_base:
+            try:
+                variante_base = await crear_variante_base_automatica(
+                    id_producto=nuevo_producto.id_producto,
+                    db=db,
+                    precio_override=float(entrada.precio_base) if entrada.precio_base else None
                 )
-            )
-        
-        if subcategoria_nombre:
-            query = query.join(Subcategoria).where(
-                and_(
-                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
-                    Subcategoria.id_estado == estado_activo_id,
-                    Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%")
+                
+                print(f"✅ Variante base creada automáticamente: {variante_base.sku_variante}")
+                
+            except Exception as e:
+                # Si falla la creación de variante, rollback todo
+                await db.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Error creando variante base automática: {str(e)}"
                 )
-            )
         
-        # Contar total (replicando la misma lógica)
-        count_query = select(func.count(Producto.id_producto)).where(Producto.id_estado == estado_activo_id)
+        # Confirmar transacción
+        await db.commit()
         
-        if nombre:
-            count_query = count_query.where(Producto.nombre.ilike(f"%{nombre}%"))
-        if sku:
-            count_query = count_query.where(Producto.sku.ilike(f"%{sku}%"))
-        if codigo_barras:
-            count_query = count_query.where(Producto.codigo_barras.ilike(f"%{codigo_barras}%"))
-        if precio is not None:
-            count_query = count_query.where(Producto.precio_base == precio)
-        if precio_min is not None:
-            count_query = count_query.where(Producto.precio_base >= precio_min)
-        if precio_max is not None:
-            count_query = count_query.where(Producto.precio_base <= precio_max)
-        if precio_mayor is not None:
-            count_query = count_query.where(Producto.precio_base > precio_mayor)
-        if precio_menor is not None:
-            count_query = count_query.where(Producto.precio_base < precio_menor)
-        if precio_texto:
-            count_query = count_query.where(cast(Producto.precio_base, String).ilike(f"%{precio_texto}%"))
+        # ===== CONSTRUIR RESPUESTA =====
+        producto_data = ProductoRead.model_validate(nuevo_producto).model_dump()
         
-        if marca_nombre:
-            count_query = count_query.join(Marca).where(
-                and_(
-                    Producto.id_marca == Marca.id_marca,
-                    Marca.id_estado == estado_activo_id,
-                    Marca.nombre.ilike(f"%{marca_nombre}%")
-                )
-            )
+        respuesta = {
+            "success": True,
+            "message": "Producto creado correctamente",
+            "data": producto_data
+        }
         
-        if categoria_nombre:
-            count_query = count_query.join(Categoria).where(
-                and_(
-                    Producto.id_categoria == Categoria.id_categoria,
-                    Categoria.id_estado == estado_activo_id,
-                    Categoria.nombre.ilike(f"%{categoria_nombre}%")
-                )
-            )
-        
-        if subcategoria_nombre:
-            count_query = count_query.join(Subcategoria).where(
-                and_(
-                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
-                    Subcategoria.id_estado == estado_activo_id,
-                    Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%")
-                )
-            )
-        
-        total = await db.scalar(count_query)
-        
-        # Ejecutar consulta paginada
-        result = await db.execute(query.offset(skip).limit(limit))
-        productos = result.scalars().all()
-        
-        data = [ProductoRead.model_validate(p).model_dump() for p in productos]
-
-    return {
-        "success": True,
-        "total_count": total,
-        "expandido": expandir,
-        "filtros_aplicados": {
-            "basicos": {
-                "nombre": nombre,
-                "sku": sku,
-                "codigo_barras": codigo_barras
-            },
-            "precio": {
-                "exacto": precio,
-                "min": precio_min,
-                "max": precio_max,
-                "mayor": precio_mayor,
-                "menor": precio_menor,
-                "texto": precio_texto
-            },
-            "entidades": {
-                "marca_nombre": marca_nombre,
-                "categoria_nombre": categoria_nombre,
-                "subcategoria_nombre": subcategoria_nombre
+        # Agregar información de variante base si se creó
+        if variante_base:
+            respuesta["variante_base"] = {
+                "id_producto_variante": str(variante_base.id_producto_variante),
+                "sku_variante": variante_base.sku_variante,
+                "precio": float(variante_base.precio) if variante_base.precio else 0.0,
+                "mensaje": "Variante base creada automáticamente"
             }
-        },
-        "paginacion": {
-            "skip": skip,
-            "limit": limit,
-            "total": total,
-            "pagina_actual": (skip // limit) + 1,
-            "total_paginas": ((total - 1) // limit) + 1 if total > 0 else 0
-        },
-        "data": data
-    }
+            respuesta["message"] += " (con variante base automática)"
+        
+        return respuesta
+        
+    except HTTPException:
+        # Re-lanzar excepciones HTTP
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        
+        # Manejo específico de errores de constraint
+        error_msg = str(e).lower()
+        if "unique" in error_msg or "duplicate" in error_msg:
+            if "sku" in error_msg:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Ya existe un producto con el SKU: {entrada.sku}"
+                )
+            elif "codigo_barras" in error_msg:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Ya existe un producto con el código de barras: {entrada.codigo_barras}"
+                )
+            else:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Error de duplicidad en los datos del producto"
+                )
+        elif "cat_subcategoria" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail="Error de relación entre categoría y subcategoría"
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error interno del servidor: {str(e)}"
+            )
+
+
+# ===== ENDPOINT ADICIONAL PARA CREAR PRODUCTO SIN VARIANTE BASE =====
+
+@router.post("/sin_variante_base", response_model=dict, status_code=201)
+async def crear_producto_sin_variante_base(
+    entrada: ProductoCreate,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Crea un producto SIN variante base automática.
+    
+    USAR SOLO SI:
+    - Vas a crear las variantes manualmente después
+    - Es un producto que requiere configuración específica de variantes
+    
+    ADVERTENCIA: El producto NO será vendible hasta que tenga al menos una variante.
+    """
+    
+    # Llamar al endpoint principal con crear_variante_base=False
+    return await crear_producto(entrada, crear_variante_base=False, db=db)
+
+
+# ===== ENDPOINT PARA AGREGAR VARIANTE BASE A PRODUCTO EXISTENTE =====
+
+@router.post("/{id_producto}/crear_variante_base", response_model=dict)
+async def crear_variante_base_para_producto(
+    id_producto: UUID,
+    precio_override: Optional[float] = Query(None, description="Precio específico para la variante base"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Crea una variante base para un producto existente que no tiene variantes.
+    Útil para productos creados antes de implementar variantes obligatorias.
+    """
+    
+    # Verificar que el producto existe
+    producto_query = select(Producto).where(Producto.id_producto == id_producto)
+    result = await db.execute(producto_query)
+    producto = result.scalar_one_or_none()
+    
+    if not producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # Verificar que no tenga variantes ya
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    variantes_existentes_query = select(ProductoVariante).where(
+        ProductoVariante.id_producto == id_producto,
+        ProductoVariante.id_estado == estado_activo_id
+    )
+    result = await db.execute(variantes_existentes_query)
+    variantes_existentes = result.scalars().all()
+    
+    if variantes_existentes:
+        return {
+            "success": False,
+            "message": f"El producto ya tiene {len(variantes_existentes)} variante(s)",
+            "variantes_existentes": [
+                {
+                    "id_producto_variante": str(v.id_producto_variante),
+                    "sku_variante": v.sku_variante
+                } for v in variantes_existentes
+            ]
+        }
+    
+    try:
+        # Crear la variante base
+        variante_base = await crear_variante_base_automatica(
+            id_producto=id_producto,
+            db=db,
+            precio_override=precio_override
+        )
+        
+        await db.commit()
+        
+        return {
+            "success": True,
+            "message": "Variante base creada exitosamente",
+            "variante_base": {
+                "id_producto_variante": str(variante_base.id_producto_variante),
+                "sku_variante": variante_base.sku_variante,
+                "precio": float(variante_base.precio) if variante_base.precio else 0.0,
+                "codigo_barras_var": variante_base.codigo_barras_var
+            }
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error creando variante base: {str(e)}"
+        )
 
 @router.get("/{id_producto}", response_model=dict)
 async def obtener_producto(
@@ -783,8 +701,14 @@ async def eliminar_producto(
     await db.commit()
     return {"success": True, "message": "Producto eliminado permanentemente"}
 
-# ===== ENDPOINT CORREGIDO - Maneja Productos sin Variantes =====
-# Reemplazar en producto.py
+
+
+
+# producto.py - ENDPOINT ACTUALIZADO
+# ---------------------------
+# Reemplazar el endpoint buscar_producto_por_codigo existente
+
+from utils.variante_base import garantizar_variante_base
 
 @router.get("/buscar_por_codigo/{codigo}", response_model=dict)
 async def buscar_producto_por_codigo(
@@ -792,13 +716,16 @@ async def buscar_producto_por_codigo(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Endpoint inteligente que busca un producto por código (SKU, código de barras).
+    Endpoint inteligente para búsqueda de productos por código.
     
-    Implementa búsqueda híbrida:
-    1. Busca primero como variante específica
+    NUEVA LÓGICA (Opción 1 - Variantes Obligatorias):
+    1. Busca como variante específica
     2. Si no encuentra, busca como producto base
-    3. Si el producto base no tiene variantes, lo trata como variante única
-    4. Retorna información optimizada para punto de venta
+    3. Si el producto no tiene variantes, crea automáticamente una variante base
+    4. SIEMPRE retorna variantes reales (nunca virtuales)
+    
+    Returns:
+        dict: Información del producto/variante encontrado con acción sugerida
     """
     
     if not codigo or not codigo.strip():
@@ -847,7 +774,7 @@ async def buscar_producto_por_codigo(
     variante_row = result.first()
     
     if variante_row:
-        # ENCONTRADO COMO VARIANTE ESPECÍFICA
+        # ✅ ENCONTRADO COMO VARIANTE ESPECÍFICA
         precio_final = float(variante_row.precio) if variante_row.precio else float(variante_row.precio_base) if variante_row.precio_base else 0.0
         
         # Construir descripción de atributos
@@ -870,7 +797,7 @@ async def buscar_producto_por_codigo(
             "producto_nombre": variante_row.producto_nombre,
             "producto_descripcion": variante_row.producto_descripcion,
             "es_kit": variante_row.es_kit,
-            "descripcion_variante": " | ".join(atributos) if atributos else "Estándar",
+            "descripcion_variante": " | ".join(atributos) if atributos else "Producto Base",
             "atributos": {
                 "talla": variante_row.talla_nombre,
                 "color": variante_row.color_nombre, 
@@ -918,31 +845,7 @@ async def buscar_producto_por_codigo(
     producto_row = result.first()
     
     if producto_row:
-        # ENCONTRADO COMO PRODUCTO BASE - Buscar sus variantes
-        variantes_query = text("""
-            SELECT 
-                pv.id_producto_variante,
-                pv.sku_variante,
-                pv.codigo_barras_var,
-                pv.precio,
-                pv.peso_gr,
-                ct.nombre as talla_nombre,
-                cc.nombre as color_nombre,
-                ctam.nombre as tamano_nombre
-            FROM producto_variante pv
-            LEFT JOIN cat_talla ct ON pv.id_talla = ct.id_talla
-            LEFT JOIN cat_color cc ON pv.id_color = cc.id_color
-            LEFT JOIN cat_tamano ctam ON pv.id_tamano = ctam.id_tamano
-            WHERE pv.id_producto = :id_producto
-            AND pv.id_estado = :estado_activo_id
-            ORDER BY pv.sku_variante
-        """)
-        
-        result = await db.execute(variantes_query, {
-            "id_producto": producto_row.id_producto,
-            "estado_activo_id": estado_activo_id
-        })
-        variantes_rows = result.fetchall()
+        # ✅ ENCONTRADO COMO PRODUCTO BASE
         
         # Construir información del producto
         producto_info = {
@@ -953,90 +856,103 @@ async def buscar_producto_por_codigo(
             "descripcion": producto_row.descripcion,
             "precio_base": float(producto_row.precio_base) if producto_row.precio_base else 0.0,
             "es_kit": producto_row.es_kit,
-            "vida_util_dias": producto_row.vida_util_dias,
-            "total_variantes": len(variantes_rows)
+            "vida_util_dias": producto_row.vida_util_dias
         }
         
-        # ===== NUEVO: Manejar productos sin variantes =====
-        if len(variantes_rows) == 0:
-            # PRODUCTO SIN VARIANTES - Crear variante virtual del producto base
-            variante_virtual = {
-                "id_producto_variante": f"virtual_{producto_row.id_producto}",  # ID virtual
-                "id_producto": str(producto_row.id_producto),
-                "sku_variante": producto_row.sku or f"{producto_row.nombre}_BASE",
-                "codigo_barras_var": producto_row.codigo_barras,
-                "precio": float(producto_row.precio_base) if producto_row.precio_base else 0.0,
-                "peso_gr": 0.0,
-                "vida_util_dias": producto_row.vida_util_dias,
-                "producto_nombre": producto_row.nombre,
-                "producto_descripcion": producto_row.descripcion,
-                "es_kit": producto_row.es_kit,
-                "descripcion_variante": "Producto Base",
-                "atributos": {
-                    "talla": None,
-                    "color": None,
-                    "tamano": None
-                }
-            }
+        # =================
+        # NUEVA LÓGICA: Garantizar que tenga variantes
+        # =================
+        try:
+            # Esto creará una variante base si no existe
+            variante_base = await garantizar_variante_base(producto_row.id_producto, db)
+            await db.commit()  # Confirmar la creación de variante base
+            
+            # Buscar todas las variantes del producto (incluyendo la recién creada)
+            variantes_query = text("""
+                SELECT 
+                    pv.id_producto_variante,
+                    pv.sku_variante,
+                    pv.codigo_barras_var,
+                    pv.precio,
+                    pv.peso_gr,
+                    ct.nombre as talla_nombre,
+                    cc.nombre as color_nombre,
+                    ctam.nombre as tamano_nombre
+                FROM producto_variante pv
+                LEFT JOIN cat_talla ct ON pv.id_talla = ct.id_talla
+                LEFT JOIN cat_color cc ON pv.id_color = cc.id_color
+                LEFT JOIN cat_tamano ctam ON pv.id_tamano = ctam.id_tamano
+                WHERE pv.id_producto = :id_producto
+                AND pv.id_estado = :estado_activo_id
+                ORDER BY pv.sku_variante
+            """)
+            
+            result = await db.execute(variantes_query, {
+                "id_producto": producto_row.id_producto,
+                "estado_activo_id": estado_activo_id
+            })
+            variantes_rows = result.fetchall()
+            
+            # Construir lista de variantes
+            variantes_info = []
+            for var_row in variantes_rows:
+                precio_final = float(var_row.precio) if var_row.precio else float(producto_row.precio_base) if producto_row.precio_base else 0.0
+                
+                # Construir descripción de atributos
+                atributos = []
+                if var_row.talla_nombre:
+                    atributos.append(f"Talla: {var_row.talla_nombre}")
+                if var_row.color_nombre:
+                    atributos.append(f"Color: {var_row.color_nombre}")
+                if var_row.tamano_nombre:
+                    atributos.append(f"Tamaño: {var_row.tamano_nombre}")
+                
+                descripcion_variante = " | ".join(atributos) if atributos else "Producto Base"
+                
+                variantes_info.append({
+                    "id_producto_variante": str(var_row.id_producto_variante),
+                    "sku_variante": var_row.sku_variante,
+                    "codigo_barras_var": var_row.codigo_barras_var,
+                    "precio": precio_final,
+                    "peso_gr": float(var_row.peso_gr) if var_row.peso_gr else 0.0,
+                    "descripcion_variante": descripcion_variante,
+                    "atributos": {
+                        "talla": var_row.talla_nombre,
+                        "color": var_row.color_nombre,
+                        "tamano": var_row.tamano_nombre
+                    }
+                })
+            
+            # Actualizar total de variantes
+            producto_info["total_variantes"] = len(variantes_info)
+            
+            # Determinar acción sugerida
+            if len(variantes_info) == 1:
+                accion = "agregar_directo"
+                mensaje = f"Producto encontrado: {producto_row.nombre} (variante base creada automáticamente)"
+                variante_seleccionada = variantes_info[0]
+            else:
+                accion = "mostrar_selector"
+                mensaje = f"Producto encontrado con {len(variantes_info)} variantes disponibles"
+                variante_seleccionada = None
             
             return {
                 "success": True,
-                "tipo": "producto_sin_variantes",
-                "accion_sugerida": "agregar_directo",
-                "mensaje": f"Producto base encontrado: {producto_row.nombre}",
-                "variante": variante_virtual,
+                "tipo": "producto_base",
+                "accion_sugerida": accion,
+                "mensaje": mensaje,
+                "variante": variante_seleccionada,
                 "producto": producto_info,
-                "variantes": []
+                "variantes": variantes_info
             }
-        
-        # ===== PRODUCTO CON VARIANTES (lógica original) =====
-        # Construir lista de variantes
-        variantes_info = []
-        for var_row in variantes_rows:
-            precio_final = float(var_row.precio) if var_row.precio else float(producto_row.precio_base) if producto_row.precio_base else 0.0
             
-            # Construir descripción de atributos
-            atributos = []
-            if var_row.talla_nombre:
-                atributos.append(f"Talla: {var_row.talla_nombre}")
-            if var_row.color_nombre:
-                atributos.append(f"Color: {var_row.color_nombre}")
-            if var_row.tamano_nombre:
-                atributos.append(f"Tamaño: {var_row.tamano_nombre}")
-            
-            descripcion_variante = " | ".join(atributos) if atributos else "Estándar"
-            
-            variantes_info.append({
-                "id_producto_variante": str(var_row.id_producto_variante),
-                "sku_variante": var_row.sku_variante,
-                "codigo_barras_var": var_row.codigo_barras_var,
-                "precio": precio_final,
-                "peso_gr": float(var_row.peso_gr) if var_row.peso_gr else 0.0,
-                "descripcion_variante": descripcion_variante,
-                "atributos": {
-                    "talla": var_row.talla_nombre,
-                    "color": var_row.color_nombre,
-                    "tamano": var_row.tamano_nombre
-                }
-            })
-        
-        # Determinar acción sugerida
-        if len(variantes_rows) == 1:
-            accion = "agregar_directo"
-            mensaje = f"Producto con una variante encontrado: {producto_row.nombre}"
-        else:
-            accion = "mostrar_selector"
-            mensaje = f"Producto encontrado con {len(variantes_rows)} variantes disponibles"
-        
-        return {
-            "success": True,
-            "tipo": "producto_base",
-            "accion_sugerida": accion,
-            "mensaje": mensaje,
-            "variante": variantes_info[0] if len(variantes_rows) == 1 else None,
-            "producto": producto_info,
-            "variantes": variantes_info
-        }
+        except Exception as e:
+            # Si hay error creando la variante base, rollback
+            await db.rollback()
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Error garantizando variante base para producto {producto_row.nombre}: {str(e)}"
+            )
     
     # =================
     # NO ENCONTRADO
@@ -1049,4 +965,59 @@ async def buscar_producto_por_codigo(
         "variante": None,
         "producto": None,
         "variantes": []
+    }
+
+
+# ===== ENDPOINT ADICIONAL PARA MIGRACIÓN =====
+
+@router.post("/migrar_variantes_base", response_model=dict)
+async def migrar_variantes_base_endpoint(
+    limite: int = Query(100, ge=1, le=1000, description="Productos a procesar por lote"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Endpoint para ejecutar la migración de productos sin variantes.
+    Crea variantes base automáticamente para productos existentes.
+    
+    USAR CON PRECAUCIÓN: Solo ejecutar una vez en producción.
+    """
+    
+    from utils.variante_base import migrar_productos_sin_variantes
+    
+    try:
+        estadisticas = await migrar_productos_sin_variantes(db, limite)
+        
+        return {
+            "success": True,
+            "message": "Migración de variantes base completada",
+            "estadisticas": estadisticas
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error durante la migración: {str(e)}"
+        )
+
+
+# ===== ENDPOINT DE VALIDACIÓN =====
+
+@router.get("/validar_integridad_variantes", response_model=dict)
+async def validar_integridad_variantes_endpoint(
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Valida que todos los productos activos tengan al menos una variante.
+    Útil para monitorear la integridad después de la migración.
+    """
+    
+    from utils.variante_base import validar_integridad_variantes
+    
+    reporte = await validar_integridad_variantes(db)
+    
+    return {
+        "success": True,
+        "message": "Validación de integridad completada",
+        "reporte": reporte
     }
