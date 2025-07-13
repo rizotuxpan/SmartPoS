@@ -17,7 +17,7 @@ from utils.estado import get_estado_id_por_clave
 from utils.contexto import obtener_contexto
 
 # --------------------------------------
-# Modelo ORM (SQLAlchemy)
+# Modelo ORM (SQLAlchemy) - SIN CAMBIOS
 # --------------------------------------
 class Venta(Base):
     __tablename__ = "venta"
@@ -52,7 +52,7 @@ server_default=text("f_default_estatus_activo()"))
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 # ----------------------------------
-# Schemas Pydantic
+# Schemas Pydantic - CORREGIDOS
 # ----------------------------------
 class VentaBase(BaseModel):
     id_cliente: UUID
@@ -60,6 +60,7 @@ class VentaBase(BaseModel):
     id_sucursal: UUID
     id_usuario: UUID
     numero_folio: str
+    fecha_venta: Optional[datetime] = None  # ✅ AGREGADO - CAMPO FALTANTE
     subtotal: Decimal
     descuento: Optional[Decimal] = 0
     impuesto: Optional[Decimal] = 0
@@ -67,21 +68,28 @@ class VentaBase(BaseModel):
     tipo_venta: Optional[str] = "CONTADO"
     estado_venta: Optional[str] = "COMPLETADA"
     observaciones: Optional[str] = None
+    created_by: UUID  # ✅ AGREGADO - CAMPO FALTANTE
+    modified_by: UUID  # ✅ AGREGADO - CAMPO FALTANTE
 
 class VentaCreate(VentaBase):
     pass
 
 class VentaUpdate(BaseModel):
+    numero_folio: Optional[str] = None
+    fecha_venta: Optional[datetime] = None
+    subtotal: Optional[Decimal] = None
+    descuento: Optional[Decimal] = None
+    impuesto: Optional[Decimal] = None
+    total: Optional[Decimal] = None
+    tipo_venta: Optional[str] = None
     estado_venta: Optional[str] = None
     observaciones: Optional[str] = None
+    modified_by: Optional[UUID] = None
 
 class VentaRead(VentaBase):
     id_venta: UUID
     id_empresa: UUID
     id_estado: UUID
-    fecha_venta: datetime
-    created_by: UUID
-    modified_by: UUID
     created_at: datetime
     updated_at: datetime
     
@@ -173,6 +181,7 @@ async def crear_venta(
         id_sucursal=entrada.id_sucursal,
         id_usuario=entrada.id_usuario,
         numero_folio=entrada.numero_folio,
+        fecha_venta=entrada.fecha_venta or datetime.now(),  # ✅ AGREGADO - PROCESAR FECHA_VENTA
         subtotal=entrada.subtotal,
         descuento=entrada.descuento,
         impuesto=entrada.impuesto,
@@ -180,8 +189,8 @@ async def crear_venta(
         tipo_venta=entrada.tipo_venta,
         estado_venta=entrada.estado_venta,
         observaciones=entrada.observaciones,
-        created_by=ctx["user_id"],
-        modified_by=ctx["user_id"]
+        created_by=entrada.created_by,  # ✅ CAMBIADO - USAR DEL JSON EN LUGAR DE CTX
+        modified_by=entrada.modified_by  # ✅ CAMBIADO - USAR DEL JSON EN LUGAR DE CTX
     )
     db.add(nueva)
     
@@ -190,3 +199,56 @@ async def crear_venta(
     await db.commit()
     
     return {"success": True, "data": VentaRead.model_validate(nueva)}
+
+@router.put("/{id_venta}", response_model=dict)
+async def actualizar_venta(
+    id_venta: UUID,
+    entrada: VentaUpdate,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Actualiza una venta existente."""
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    stmt = select(Venta).where(
+        Venta.id_venta == id_venta,
+        Venta.id_estado == estado_activo_id
+    )
+    result = await db.execute(stmt)
+    venta = result.scalar_one_or_none()
+    
+    if not venta:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+    
+    # Actualizar campos proporcionados
+    update_data = entrada.dict(exclude_unset=True)
+    update_data['updated_at'] = datetime.now()
+    
+    for field, value in update_data.items():
+        setattr(venta, field, value)
+    
+    try:
+        await db.commit()
+        await db.refresh(venta)
+        
+        return {
+            "success": True,
+            "data": VentaRead.model_validate(venta)
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al actualizar venta: {str(e)}")
+
+# ===== ENDPOINT ADICIONAL PARA DEBUGGING =====
+@router.post("/debug", response_model=dict)
+async def debug_venta(
+    entrada: dict,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Endpoint para debugging - muestra qué datos se reciben."""
+    return {
+        "success": True,
+        "received_data": entrada,
+        "fields_count": len(entrada),
+        "fields": list(entrada.keys())
+    }
