@@ -17,17 +17,14 @@ from utils.estado import get_estado_id_por_clave
 from utils.contexto import obtener_contexto
 
 # --------------------------------------
-# Modelo ORM (SQLAlchemy) - SIN CAMBIOS
+# Modelo ORM (SQLAlchemy)
 # --------------------------------------
 class Venta(Base):
     __tablename__ = "venta"
     
-    id_venta = Column(PG_UUID(as_uuid=True), primary_key=True, 
-server_default=text("gen_random_uuid()"))
-    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False, 
-server_default=text("current_setting('app.current_tenant'::text)::uuid"))
-    id_estado = Column(PG_UUID(as_uuid=True), nullable=False, 
-server_default=text("f_default_estatus_activo()"))
+    id_venta = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False, server_default=text("current_setting('app.current_tenant'::text)::uuid"))
+    id_estado = Column(PG_UUID(as_uuid=True), nullable=False, server_default=text("f_default_estatus_activo()"))
     id_cliente = Column(PG_UUID(as_uuid=True), nullable=False)
     id_terminal = Column(PG_UUID(as_uuid=True), nullable=False)
     id_sucursal = Column(PG_UUID(as_uuid=True), nullable=False)
@@ -52,7 +49,7 @@ server_default=text("f_default_estatus_activo()"))
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 # ----------------------------------
-# Schemas Pydantic - CORREGIDOS
+# Schemas Pydantic
 # ----------------------------------
 class VentaBase(BaseModel):
     id_cliente: UUID
@@ -60,7 +57,7 @@ class VentaBase(BaseModel):
     id_sucursal: UUID
     id_usuario: UUID
     numero_folio: str
-    fecha_venta: Optional[datetime] = None  # ✅ AGREGADO - CAMPO FALTANTE
+    fecha_venta: Optional[datetime] = None
     subtotal: Decimal
     descuento: Optional[Decimal] = 0
     impuesto: Optional[Decimal] = 0
@@ -68,8 +65,8 @@ class VentaBase(BaseModel):
     tipo_venta: Optional[str] = "CONTADO"
     estado_venta: Optional[str] = "COMPLETADA"
     observaciones: Optional[str] = None
-    created_by: UUID  # ✅ AGREGADO - CAMPO FALTANTE
-    modified_by: UUID  # ✅ AGREGADO - CAMPO FALTANTE
+    created_by: UUID
+    modified_by: UUID
 
 class VentaCreate(VentaBase):
     pass
@@ -114,38 +111,41 @@ async def listar_ventas(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Lista ventas con filtros opcionales."""
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    stmt = select(Venta).where(Venta.id_estado == estado_activo_id)
-    
-    if id_cliente:
-        stmt = stmt.where(Venta.id_cliente == id_cliente)
-    if id_terminal:
-        stmt = stmt.where(Venta.id_terminal == id_terminal)
-    if id_sucursal:
-        stmt = stmt.where(Venta.id_sucursal == id_sucursal)
-    if numero_folio:
-        stmt = stmt.where(Venta.numero_folio.ilike(f"%{numero_folio}%"))
-    if estado_venta:
-        stmt = stmt.where(Venta.estado_venta == estado_venta)
-    if fecha_desde:
-        stmt = stmt.where(Venta.fecha_venta >= fecha_desde)
-    if fecha_hasta:
-        stmt = stmt.where(Venta.fecha_venta <= fecha_hasta)
-    
-    stmt = stmt.order_by(Venta.fecha_venta.desc())
-    
-    total_stmt = select(func.count()).select_from(stmt.subquery())
-    total = await db.scalar(total_stmt)
-    
-    result = await db.execute(stmt.offset(skip).limit(limit))
-    data = result.scalars().all()
-    
-    return {
-        "success": True,
-        "total_count": total,
-        "data": [VentaRead.model_validate(v) for v in data]
-    }
+    try:
+        estado_activo_id = await get_estado_id_por_clave("act", db)
+        
+        stmt = select(Venta).where(Venta.id_estado == estado_activo_id)
+        
+        if id_cliente:
+            stmt = stmt.where(Venta.id_cliente == id_cliente)
+        if id_terminal:
+            stmt = stmt.where(Venta.id_terminal == id_terminal)
+        if id_sucursal:
+            stmt = stmt.where(Venta.id_sucursal == id_sucursal)
+        if numero_folio:
+            stmt = stmt.where(Venta.numero_folio.ilike(f"%{numero_folio}%"))
+        if estado_venta:
+            stmt = stmt.where(Venta.estado_venta == estado_venta)
+        if fecha_desde:
+            stmt = stmt.where(Venta.fecha_venta >= fecha_desde)
+        if fecha_hasta:
+            stmt = stmt.where(Venta.fecha_venta <= fecha_hasta)
+        
+        stmt = stmt.order_by(Venta.fecha_venta.desc())
+        
+        total_stmt = select(func.count()).select_from(stmt.subquery())
+        total = await db.scalar(total_stmt)
+        
+        result = await db.execute(stmt.offset(skip).limit(limit))
+        data = result.scalars().all()
+        
+        return {
+            "success": True,
+            "total_count": total,
+            "data": [VentaRead.model_validate(v) for v in data]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar ventas: {str(e)}")
 
 @router.get("/{id_venta}", response_model=VentaRead)
 async def obtener_venta(
@@ -153,19 +153,24 @@ async def obtener_venta(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Obtiene una venta por ID."""
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    stmt = select(Venta).where(
-        Venta.id_venta == id_venta,
-        Venta.id_estado == estado_activo_id
-    )
-    result = await db.execute(stmt)
-    venta = result.scalar_one_or_none()
-    
-    if not venta:
-        raise HTTPException(status_code=404, detail="Venta no encontrada")
-    
-    return VentaRead.model_validate(venta)
+    try:
+        estado_activo_id = await get_estado_id_por_clave("act", db)
+        
+        stmt = select(Venta).where(
+            Venta.id_venta == id_venta,
+            Venta.id_estado == estado_activo_id
+        )
+        result = await db.execute(stmt)
+        venta = result.scalar_one_or_none()
+        
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+        
+        return VentaRead.model_validate(venta)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener venta: {str(e)}")
 
 @router.post("/", response_model=dict, status_code=201)
 async def crear_venta(
@@ -173,32 +178,40 @@ async def crear_venta(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Crea una nueva venta."""
-    ctx = await obtener_contexto(db)
-    
-    nueva = Venta(
-        id_cliente=entrada.id_cliente,
-        id_terminal=entrada.id_terminal,
-        id_sucursal=entrada.id_sucursal,
-        id_usuario=entrada.id_usuario,
-        numero_folio=entrada.numero_folio,
-        fecha_venta=entrada.fecha_venta or datetime.now(),  # ✅ AGREGADO - PROCESAR FECHA_VENTA
-        subtotal=entrada.subtotal,
-        descuento=entrada.descuento,
-        impuesto=entrada.impuesto,
-        total=entrada.total,
-        tipo_venta=entrada.tipo_venta,
-        estado_venta=entrada.estado_venta,
-        observaciones=entrada.observaciones,
-        created_by=entrada.created_by,  # ✅ CAMBIADO - USAR DEL JSON EN LUGAR DE CTX
-        modified_by=entrada.modified_by  # ✅ CAMBIADO - USAR DEL JSON EN LUGAR DE CTX
-    )
-    db.add(nueva)
-    
-    await db.flush()
-    await db.refresh(nueva)
-    await db.commit()
-    
-    return {"success": True, "data": VentaRead.model_validate(nueva)}
+    try:
+        ctx = await obtener_contexto(db)
+        
+        nueva = Venta(
+            id_cliente=entrada.id_cliente,
+            id_terminal=entrada.id_terminal,
+            id_sucursal=entrada.id_sucursal,
+            id_usuario=entrada.id_usuario,
+            numero_folio=entrada.numero_folio,
+            fecha_venta=entrada.fecha_venta or datetime.now(),
+            subtotal=entrada.subtotal,
+            descuento=entrada.descuento or 0,
+            impuesto=entrada.impuesto or 0,
+            total=entrada.total,
+            tipo_venta=entrada.tipo_venta or "CONTADO",
+            estado_venta=entrada.estado_venta or "COMPLETADA",
+            observaciones=entrada.observaciones,
+            created_by=entrada.created_by,
+            modified_by=entrada.modified_by
+        )
+        
+        db.add(nueva)
+        await db.flush()
+        await db.refresh(nueva)
+        await db.commit()
+        
+        return {
+            "success": True, 
+            "data": VentaRead.model_validate(nueva)
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al crear venta: {str(e)}")
 
 @router.put("/{id_venta}", response_model=dict)
 async def actualizar_venta(
@@ -207,26 +220,26 @@ async def actualizar_venta(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Actualiza una venta existente."""
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    
-    stmt = select(Venta).where(
-        Venta.id_venta == id_venta,
-        Venta.id_estado == estado_activo_id
-    )
-    result = await db.execute(stmt)
-    venta = result.scalar_one_or_none()
-    
-    if not venta:
-        raise HTTPException(status_code=404, detail="Venta no encontrada")
-    
-    # Actualizar campos proporcionados
-    update_data = entrada.dict(exclude_unset=True)
-    update_data['updated_at'] = datetime.now()
-    
-    for field, value in update_data.items():
-        setattr(venta, field, value)
-    
     try:
+        estado_activo_id = await get_estado_id_por_clave("act", db)
+        
+        stmt = select(Venta).where(
+            Venta.id_venta == id_venta,
+            Venta.id_estado == estado_activo_id
+        )
+        result = await db.execute(stmt)
+        venta = result.scalar_one_or_none()
+        
+        if not venta:
+            raise HTTPException(status_code=404, detail="Venta no encontrada")
+        
+        # Actualizar campos proporcionados
+        update_data = entrada.dict(exclude_unset=True)
+        update_data['updated_at'] = datetime.now()
+        
+        for field, value in update_data.items():
+            setattr(venta, field, value)
+        
         await db.commit()
         await db.refresh(venta)
         
@@ -235,11 +248,13 @@ async def actualizar_venta(
             "data": VentaRead.model_validate(venta)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Error al actualizar venta: {str(e)}")
 
-# ===== ENDPOINT ADICIONAL PARA DEBUGGING =====
+# ===== ENDPOINTS ADICIONALES PARA DEBUGGING =====
 @router.post("/debug", response_model=dict)
 async def debug_venta(
     entrada: dict,
@@ -252,3 +267,20 @@ async def debug_venta(
         "fields_count": len(entrada),
         "fields": list(entrada.keys())
     }
+
+@router.get("/debug/estado", response_model=dict)
+async def debug_estado(db: AsyncSession = Depends(get_async_db)):
+    """Endpoint para probar la función de estado."""
+    try:
+        estado_id = await get_estado_id_por_clave("act", db)
+        return {
+            "success": True,
+            "estado_id": str(estado_id),
+            "message": "Función get_estado_id_por_clave funciona correctamente"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "message": "Error en get_estado_id_por_clave"
+        }
