@@ -45,9 +45,9 @@ class Usuario(Base):
     id_rol = Column(PG_UUID(as_uuid=True), nullable=True)
     nombre = Column(String(80), nullable=False)
     apellido = Column(String(80), nullable=False)
-    email = Column(CITEXT, nullable=False)
+    email = Column(CITEXT, nullable=True)  # ✅ Ahora es NULL según DDL
     password_hash = Column(String, nullable=False)
-    usuario = Column(String(20), nullable=True)  # ✅ Campo que SÍ existe
+    usuario = Column(String(20), nullable=False)  # ✅ Ahora es NOT NULL según DDL
     created_by = Column(PG_UUID(as_uuid=True), nullable=False)  # ✅ Campo faltante
     modified_by = Column(PG_UUID(as_uuid=True), nullable=False)  # ✅ Campo faltante
     created_at = Column(
@@ -71,8 +71,8 @@ class UsuarioBase(BaseModel):
     """
     nombre: str
     apellido: str
-    email: EmailStr
-    usuario: str  # ✅ OBLIGATORIO para login
+    email: Optional[EmailStr] = None  # ✅ Email ahora es opcional según DDL
+    usuario: str  # ✅ Usuario ahora es obligatorio según DDL
     id_rol: Optional[UUID] = None
 
 class UsuarioCreate(UsuarioBase):
@@ -121,12 +121,6 @@ class LoginResponse(BaseModel):
     success: bool
     message: str
     usuario: UsuarioRead
-
-class PasswordValidationRequest(BaseModel):
-    """
-    Esquema para validación de contraseña en endpoint username/{usuario}.
-    """
-    password: str
 
 class PasswordChangeRequest(BaseModel):
     """
@@ -220,19 +214,20 @@ async def crear_usuario(
     # 1) Recuperar tenant y usuario del contexto RLS
     ctx = await obtener_contexto(db)
 
-    # 2) Verificar que el email no esté duplicado en la empresa
-    email_check = await db.execute(
-        select(Usuario).where(
-            Usuario.email == entrada.email,
-            Usuario.id_empresa == ctx["tenant_id"],
-            Usuario.id_estado != await get_estado_id_por_clave("del", db)
+    # 2) Verificar que el email no esté duplicado (si se proporciona)
+    if entrada.email:
+        email_check = await db.execute(
+            select(Usuario).where(
+                Usuario.email == entrada.email,
+                Usuario.id_empresa == ctx["tenant_id"],
+                Usuario.id_estado != await get_estado_id_por_clave("del", db)
+            )
         )
-    )
-    if email_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=409, 
-            detail="Ya existe un usuario con ese email en la empresa"
-        )
+        if email_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409, 
+                detail="Ya existe un usuario con ese email en la empresa"
+            )
 
     # 3) Verificar que el usuario no esté duplicado (ahora es obligatorio)
     usuario_check = await db.execute(
@@ -284,7 +279,11 @@ async def crear_usuario(
                 status_code=409, 
                 detail="Ya existe un usuario con ese email en la empresa"
             )
-        # Nota: No hay constraint único para usuario aún, se valida manualmente
+        elif "uq_usuario_empresa_usuario_ci" in str(e):  # ✅ Constraint que ahora SÍ existe
+            raise HTTPException(
+                status_code=409, 
+                detail="Ya existe un usuario con ese nombre de usuario en la empresa"
+            )
         else:
             raise HTTPException(
                 status_code=500, 
@@ -322,7 +321,7 @@ async def actualizar_usuario(
     if entrada.apellido is not None:
         usuario.apellido = entrada.apellido
     if entrada.email is not None:
-        # Verificar email duplicado
+        # Verificar email duplicado (solo si se proporciona)
         email_check = await db.execute(
             select(Usuario).where(
                 Usuario.email == entrada.email,
@@ -382,6 +381,11 @@ async def actualizar_usuario(
             raise HTTPException(
                 status_code=409, 
                 detail="Ya existe otro usuario con ese email en la empresa"
+            )
+        elif "uq_usuario_empresa_usuario_ci" in str(e):  # ✅ Constraint que ahora SÍ existe
+            raise HTTPException(
+                status_code=409, 
+                detail="Ya existe otro usuario con ese nombre de usuario en la empresa"
             )
         else:
             raise HTTPException(
@@ -515,18 +519,15 @@ async def cambiar_password(
         "message": "Contraseña actualizada correctamente"
     }
 
-@router.post("/username/{usuario}", response_model=LoginResponse)
-async def validar_usuario_por_username(
+@router.get("/username/{usuario}/exists", response_model=dict)
+async def verificar_disponibilidad_usuario(
     usuario: str,
-    request: PasswordValidationRequest,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Valida login de usuario específico por username y password.
-    Recibe usuario en la URL y password en el body.
-    Usa la función verify_password de PostgreSQL para validar credenciales.
+    Verifica si un nombre de usuario está disponible.
+    Útil para validar duplicados antes de crear/actualizar usuarios.
     """
-    # 1) Buscar usuario por campo 'usuario' en estado activo
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
     stmt = select(Usuario).where(
@@ -536,32 +537,18 @@ async def validar_usuario_por_username(
     result = await db.execute(stmt)
     usuario_encontrado = result.scalar_one_or_none()
 
-    # 2) Si no existe usuario con ese nombre de usuario
-    if not usuario_encontrado:
-        raise HTTPException(
-            status_code=401, 
-            detail="Credenciales inválidas"
-        )
-
-    # 3) Verificar contraseña usando función de PostgreSQL
-    password_valid_result = await db.execute(
-        select(func.verify_password(request.password, usuario_encontrado.password_hash))
-    )
-    password_valid = password_valid_result.scalar()
-
-    # 4) Si la contraseña no es válida
-    if not password_valid:
-        raise HTTPException(
-            status_code=401, 
-            detail="Credenciales inválidas"
-        )
-
-    # 5) Login exitoso - retornar información del usuario
-    return LoginResponse(
-        success=True,
-        message="Login exitoso",
-        usuario=UsuarioRead.model_validate(usuario_encontrado)
-    )
+    if usuario_encontrado:
+        return {
+            "success": False,
+            "message": "Nombre de usuario no disponible",
+            "available": False
+        }
+    
+    return {
+        "success": True,
+        "message": "Nombre de usuario disponible",
+        "available": True
+    }
 
 @router.get("/email/{email}", response_model=dict)
 async def buscar_usuario_por_email(
@@ -571,11 +558,13 @@ async def buscar_usuario_por_email(
     """
     Busca un usuario por su email.
     Útil para verificar si un email ya está registrado.
+    Nota: El email ahora es opcional en la tabla.
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
     stmt = select(Usuario).where(
         Usuario.email == email,
+        Usuario.email.is_not(None),  # ✅ Excluir registros con email NULL
         Usuario.id_estado == estado_activo_id
     )
     result = await db.execute(stmt)
