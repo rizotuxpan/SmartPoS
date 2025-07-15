@@ -240,26 +240,6 @@ async def actualizar_terminal(
 
     return {"success": True, "data": TerminalRead.model_validate(terminal)}
 
-@router.delete("/{id_terminal}", status_code=200)
-async def eliminar_terminal(
-    id_terminal: UUID,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Elimina físicamente una terminal. Se respetan políticas RLS.
-    """
-    # 1) Verificar existencia bajo RLS
-    result = await db.execute(select(Terminal).where(Terminal.id_terminal == id_terminal))
-    terminal = result.scalar_one_or_none()
-    if not terminal:
-        raise HTTPException(status_code=404, detail="Terminal no encontrada")
-
-    # 2) Ejecutar DELETE
-    await db.execute(delete(Terminal).where(Terminal.id_terminal == id_terminal))
-    await db.commit()
-
-    # 3) Responder al cliente
-    return {"success": True, "message": "Terminal eliminada permanentemente"}
 
 @router.get("/search", response_model=TerminalIdentificacion)
 async def buscar_terminal_por_sucursal_y_codigo(
@@ -295,3 +275,24 @@ async def buscar_terminal_por_sucursal_y_codigo(
     
     # 5) Retornar solo id_terminal y nombre
     return TerminalIdentificacion.model_validate(terminal)
+
+@router.delete("/{id_terminal}", status_code=200)
+async def eliminar_terminal(
+    id_terminal: UUID,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Elimina físicamente una terminal. Se respetan políticas RLS.
+    """
+    # 1) Verificar existencia bajo RLS
+    result = await db.execute(select(Terminal).where(Terminal.id_terminal == id_terminal))
+    terminal = result.scalar_one_or_none()
+    if not terminal:
+        raise HTTPException(status_code=404, detail="Terminal no encontrada")
+
+    # 2) Ejecutar DELETE
+    await db.execute(delete(Terminal).where(Terminal.id_terminal == id_terminal))
+    await db.commit()
+
+    # 3) Responder al cliente
+    return {"success": True, "message": "Terminal eliminada permanentemente"}
