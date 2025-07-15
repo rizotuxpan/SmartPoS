@@ -94,6 +94,16 @@ class TerminalRead(TerminalBase):
 
     model_config = {"from_attributes": True}  # Permitir conversión desde objeto ORM
 
+class TerminalIdentificacion(BaseModel):
+    """
+    Esquema simplificado que retorna únicamente id_terminal y nombre.
+    Usado para identificación básica de terminales.
+    """
+    id_terminal: UUID
+    nombre: str
+
+    model_config = {"from_attributes": True}
+
 # ---------------------------
 # Definición del router y endpoints
 # ---------------------------
@@ -251,22 +261,7 @@ async def eliminar_terminal(
     # 3) Responder al cliente
     return {"success": True, "message": "Terminal eliminada permanentemente"}
 
-# Agregar este schema después de los schemas existentes
-
-class TerminalIdentificacion(BaseModel):
-    """
-    Esquema de respuesta para identificación básica de terminal.
-    Contiene solo id_terminal y nombre.
-    """
-    id_terminal: UUID
-    nombre: str
-
-    model_config = {"from_attributes": True}
-
-
-# Agregar este endpoint después de los endpoints existentes
-
-@router.get("/buscar", response_model=TerminalIdentificacion)
+@router.get("/search", response_model=TerminalIdentificacion)
 async def buscar_terminal_por_sucursal_y_codigo(
     id_sucursal: UUID = Query(..., description="ID de la sucursal"),
     codigo: str = Query(..., description="Código de la terminal"),
@@ -279,24 +274,24 @@ async def buscar_terminal_por_sucursal_y_codigo(
     """
     # 1) Obtener UUID del estado "activo"
     estado_activo_id = await get_estado_id_por_clave("act", db)
-
+    
     # 2) Construir consulta con filtros exactos
     stmt = select(Terminal).where(
         Terminal.id_sucursal == id_sucursal,
         Terminal.codigo == codigo,
         Terminal.id_estado == estado_activo_id
     )
-
+    
     # 3) Ejecutar consulta
     result = await db.execute(stmt)
     terminal = result.scalar_one_or_none()
-
+    
     # 4) Si no existe, devolver 404
     if not terminal:
         raise HTTPException(
             status_code=404, 
             detail=f"Terminal no encontrada para sucursal {id_sucursal} y código '{codigo}'"
         )
-
+    
     # 5) Retornar solo id_terminal y nombre
     return TerminalIdentificacion.model_validate(terminal)
