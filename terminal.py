@@ -177,7 +177,7 @@ async def buscar_terminal_por_sucursal_y_codigo(
     if not terminal:
         raise HTTPException(
             status_code=404, 
-            detail=f"Terminal no encontrada para sucursal {id_sucursal} y código '{codigo}'"
+            detail=f"Terminal no encontrada'"
         )
     
     # 5) Retornar solo id_terminal y nombre
