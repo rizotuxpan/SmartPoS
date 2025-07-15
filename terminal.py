@@ -253,7 +253,7 @@ async def buscar_terminal_por_sucursal_y_codigo(
     Solo considera terminales en estado "activo".
     """
     # 1) Obtener UUID del estado "activo"
-    estado_activo_id = await get_estado_id_por_clave("act", db)
+    estado_activo_id = await get_estado_id_por_clave("ACT", db)
     
     # 2) Construir consulta con filtros exactos
     stmt = select(Terminal).where(
@@ -275,6 +275,7 @@ async def buscar_terminal_por_sucursal_y_codigo(
     
     # 5) Retornar solo id_terminal y nombre
     return TerminalIdentificacion.model_validate(terminal)
+
 
 @router.delete("/{id_terminal}", status_code=200)
 async def eliminar_terminal(
