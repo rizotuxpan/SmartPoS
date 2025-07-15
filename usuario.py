@@ -1,4 +1,4 @@
-# usuario.py
+# usuario.py - VERSIÓN FINAL CORREGIDA
 # ---------------------------
 # Módulo de endpoints REST para gestión de la entidad Usuario.
 # Incluye CRUD completo, autenticación y manejo seguro de contraseñas.
@@ -45,9 +45,11 @@ class Usuario(Base):
     id_rol = Column(PG_UUID(as_uuid=True), nullable=True)
     nombre = Column(String(80), nullable=False)
     apellido = Column(String(80), nullable=False)
-    email = Column(CITEXT, nullable=True)
+    email = Column(CITEXT, nullable=False)
     password_hash = Column(String, nullable=False)
-    usuario = Column(String(20), nullable=False, default=None)
+    usuario = Column(String(20), nullable=True)  # ✅ Campo que SÍ existe
+    created_by = Column(PG_UUID(as_uuid=True), nullable=False)  # ✅ Campo faltante
+    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)  # ✅ Campo faltante
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -69,8 +71,8 @@ class UsuarioBase(BaseModel):
     """
     nombre: str
     apellido: str
-    email: EmailStr = None  # Email opcional, puede ser None
-    usuario: str
+    email: EmailStr
+    usuario: str  # ✅ OBLIGATORIO para login
     id_rol: Optional[UUID] = None
 
 class UsuarioCreate(UsuarioBase):
@@ -97,6 +99,8 @@ class UsuarioRead(UsuarioBase):
     id_usuario: UUID
     id_empresa: UUID
     id_estado: UUID
+    created_by: UUID
+    modified_by: UUID
     created_at: datetime
     updated_at: datetime
 
@@ -105,8 +109,9 @@ class UsuarioRead(UsuarioBase):
 class LoginRequest(BaseModel):
     """
     Esquema para solicitud de login.
+    Busca ÚNICAMENTE por el campo 'usuario' (no por email).
     """
-    usuario: str
+    usuario: str  # Campo 'usuario' de la tabla (no email)
     password: str
 
 class LoginResponse(BaseModel):
@@ -209,7 +214,21 @@ async def crear_usuario(
     # 1) Recuperar tenant y usuario del contexto RLS
     ctx = await obtener_contexto(db)
 
-    # 2) Verificar que el usuario no esté duplicado en la empresa
+    # 2) Verificar que el email no esté duplicado en la empresa
+    email_check = await db.execute(
+        select(Usuario).where(
+            Usuario.email == entrada.email,
+            Usuario.id_empresa == ctx["tenant_id"],
+            Usuario.id_estado != await get_estado_id_por_clave("del", db)
+        )
+    )
+    if email_check.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409, 
+            detail="Ya existe un usuario con ese email en la empresa"
+        )
+
+    # 3) Verificar que el usuario no esté duplicado (ahora es obligatorio)
     usuario_check = await db.execute(
         select(Usuario).where(
             Usuario.usuario == entrada.usuario,
@@ -220,16 +239,16 @@ async def crear_usuario(
     if usuario_check.scalar_one_or_none():
         raise HTTPException(
             status_code=409, 
-            detail="Ya existe el nombre de usuario en la empresa"
+            detail="Ya existe un usuario con ese nombre de usuario en la empresa"
         )
 
-    # 3) Hashear contraseña usando función de PostgreSQL
+    # 4) Hashear contraseña usando función de PostgreSQL
     password_hash_result = await db.execute(
         select(func.hash_password(entrada.password))
     )
     password_hash = password_hash_result.scalar()
 
-    # 4) Construir instancia ORM
+    # 5) Construir instancia ORM
     nuevo = Usuario(
         nombre=entrada.nombre,
         apellido=entrada.apellido,
@@ -237,26 +256,29 @@ async def crear_usuario(
         usuario=entrada.usuario,
         password_hash=password_hash,
         id_rol=entrada.id_rol,
-        id_empresa=ctx["tenant_id"]
+        id_empresa=ctx["tenant_id"],
+        created_by=ctx["user_id"],  # ✅ Campo obligatorio
+        modified_by=ctx["user_id"]  # ✅ Campo obligatorio
     )
     db.add(nuevo)
 
-    # 5) Insert + Refresh
+    # 6) Insert + Refresh
     try:
         await db.flush()
         await db.refresh(nuevo)
         await db.commit()
 
-        # 6) Devolver datos completos (sin password_hash)
+        # 7) Devolver datos completos (sin password_hash)
         return {"success": True, "data": UsuarioRead.model_validate(nuevo)}
     
     except Exception as e:
         await db.rollback()
-        if "uq_usuario_empresa_usuario_ci" in str(e):
+        if "uq_usuario_empresa_email_ci" in str(e):
             raise HTTPException(
                 status_code=409, 
-                detail="Nombre de usuario ya existe en la empresa"
+                detail="Ya existe un usuario con ese email en la empresa"
             )
+        # Nota: No hay constraint único para usuario aún, se valida manualmente
         else:
             raise HTTPException(
                 status_code=500, 
@@ -293,6 +315,23 @@ async def actualizar_usuario(
         usuario.nombre = entrada.nombre
     if entrada.apellido is not None:
         usuario.apellido = entrada.apellido
+    if entrada.email is not None:
+        # Verificar email duplicado
+        email_check = await db.execute(
+            select(Usuario).where(
+                Usuario.email == entrada.email,
+                Usuario.id_empresa == ctx["tenant_id"],
+                Usuario.id_usuario != id_usuario,
+                Usuario.id_estado != await get_estado_id_por_clave("del", db)
+            )
+        )
+        if email_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409, 
+                detail="Ya existe otro usuario con ese email en la empresa"
+            )
+        usuario.email = entrada.email
+    
     if entrada.usuario is not None:
         # Verificar usuario duplicado
         usuario_check = await db.execute(
@@ -306,11 +345,9 @@ async def actualizar_usuario(
         if usuario_check.scalar_one_or_none():
             raise HTTPException(
                 status_code=409, 
-                detail="Ya existe otro usuario con ese nombre en la empresa"
+                detail="Ya existe otro usuario con ese nombre de usuario en la empresa"
             )
         usuario.usuario = entrada.usuario
-    if entrada.email is not None:    
-        usuario.email = entrada.email
     
     if entrada.id_rol is not None:
         usuario.id_rol = entrada.id_rol
@@ -322,7 +359,10 @@ async def actualizar_usuario(
         )
         usuario.password_hash = password_hash_result.scalar()
 
-    # 5) Flush + Refresh
+    # 5) Actualizar auditoría
+    usuario.modified_by = ctx["user_id"]
+
+    # 6) Flush + Refresh
     try:
         await db.flush()
         await db.refresh(usuario)
@@ -332,10 +372,10 @@ async def actualizar_usuario(
     
     except Exception as e:
         await db.rollback()
-        if "uq_usuario_empresa_usuario_ci" in str(e):
+        if "uq_usuario_empresa_email_ci" in str(e):
             raise HTTPException(
                 status_code=409, 
-                detail="El nombre de usuario ya existe en la empresa"
+                detail="Ya existe otro usuario con ese email en la empresa"
             )
         else:
             raise HTTPException(
@@ -374,10 +414,11 @@ async def validar_usuario(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Valida credenciales de usuario (usuario/password).
+    Valida credenciales de usuario (usuario + password).
+    Busca ÚNICAMENTE por el campo 'usuario', NO por email.
     Retorna información del usuario si las credenciales son correctas.
     """
-    # 1) Buscar usuario por usuario en estado activo
+    # 1) Buscar usuario SOLO por campo 'usuario' en estado activo
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
     stmt = select(Usuario).where(
@@ -387,7 +428,7 @@ async def validar_usuario(
     result = await db.execute(stmt)
     usuario = result.scalar_one_or_none()
 
-    # 2) Si no existe usuario con ese usuario
+    # 2) Si no existe usuario con ese nombre de usuario
     if not usuario:
         raise HTTPException(
             status_code=401, 
@@ -456,7 +497,9 @@ async def cambiar_password(
     new_password_hash = new_password_hash_result.scalar()
 
     # 4) Actualizar contraseña
+    ctx = await obtener_contexto(db)
     usuario.password_hash = new_password_hash
+    usuario.modified_by = ctx["user_id"]
     
     await db.flush()
     await db.commit()
@@ -472,8 +515,8 @@ async def buscar_usuario_por_username(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Busca un usuario por su usuario.
-    Útil para verificar si un usuario ya está registrado.
+    Busca un usuario por su campo 'usuario'.
+    Útil para verificar si un nombre de usuario ya está registrado.
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
@@ -482,9 +525,9 @@ async def buscar_usuario_por_username(
         Usuario.id_estado == estado_activo_id
     )
     result = await db.execute(stmt)
-    usuario = result.scalar_one_or_none()
+    usuario_encontrado = result.scalar_one_or_none()
 
-    if not usuario:
+    if not usuario_encontrado:
         return {
             "success": False,
             "message": "Usuario no encontrado",
@@ -495,5 +538,37 @@ async def buscar_usuario_por_username(
         "success": True,
         "message": "Usuario encontrado",
         "exists": True,
-        "data": UsuarioRead.model_validate(usuario)
+        "data": UsuarioRead.model_validate(usuario_encontrado)
+    }
+
+@router.get("/email/{email}", response_model=dict)
+async def buscar_usuario_por_email(
+    email: str,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Busca un usuario por su email.
+    Útil para verificar si un email ya está registrado.
+    """
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+    
+    stmt = select(Usuario).where(
+        Usuario.email == email,
+        Usuario.id_estado == estado_activo_id
+    )
+    result = await db.execute(stmt)
+    usuario_encontrado = result.scalar_one_or_none()
+
+    if not usuario_encontrado:
+        return {
+            "success": False,
+            "message": "Usuario no encontrado",
+            "exists": False
+        }
+    
+    return {
+        "success": True,
+        "message": "Usuario encontrado",
+        "exists": True,
+        "data": UsuarioRead.model_validate(usuario_encontrado)
     }
