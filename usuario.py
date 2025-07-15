@@ -122,6 +122,12 @@ class LoginResponse(BaseModel):
     message: str
     usuario: UsuarioRead
 
+class PasswordValidationRequest(BaseModel):
+    """
+    Esquema para validación de contraseña en endpoint username/{usuario}.
+    """
+    password: str
+
 class PasswordChangeRequest(BaseModel):
     """
     Esquema para cambio de contraseña.
@@ -509,15 +515,18 @@ async def cambiar_password(
         "message": "Contraseña actualizada correctamente"
     }
 
-@router.get("/username/{usuario}", response_model=dict)
-async def buscar_usuario_por_username(
+@router.post("/username/{usuario}", response_model=LoginResponse)
+async def validar_usuario_por_username(
     usuario: str,
+    request: PasswordValidationRequest,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Busca un usuario por su campo 'usuario'.
-    Útil para verificar si un nombre de usuario ya está registrado.
+    Valida login de usuario específico por username y password.
+    Recibe usuario en la URL y password en el body.
+    Usa la función verify_password de PostgreSQL para validar credenciales.
     """
+    # 1) Buscar usuario por campo 'usuario' en estado activo
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
     stmt = select(Usuario).where(
@@ -527,19 +536,32 @@ async def buscar_usuario_por_username(
     result = await db.execute(stmt)
     usuario_encontrado = result.scalar_one_or_none()
 
+    # 2) Si no existe usuario con ese nombre de usuario
     if not usuario_encontrado:
-        return {
-            "success": False,
-            "message": "Usuario no encontrado",
-            "exists": False
-        }
-    
-    return {
-        "success": True,
-        "message": "Usuario encontrado",
-        "exists": True,
-        "data": UsuarioRead.model_validate(usuario_encontrado)
-    }
+        raise HTTPException(
+            status_code=401, 
+            detail="Credenciales inválidas"
+        )
+
+    # 3) Verificar contraseña usando función de PostgreSQL
+    password_valid_result = await db.execute(
+        select(func.verify_password(request.password, usuario_encontrado.password_hash))
+    )
+    password_valid = password_valid_result.scalar()
+
+    # 4) Si la contraseña no es válida
+    if not password_valid:
+        raise HTTPException(
+            status_code=401, 
+            detail="Credenciales inválidas"
+        )
+
+    # 5) Login exitoso - retornar información del usuario
+    return LoginResponse(
+        success=True,
+        message="Login exitoso",
+        usuario=UsuarioRead.model_validate(usuario_encontrado)
+    )
 
 @router.get("/email/{email}", response_model=dict)
 async def buscar_usuario_por_email(
