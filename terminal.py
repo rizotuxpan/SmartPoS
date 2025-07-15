@@ -148,7 +148,42 @@ async def listar_terminales(
         "data": [TerminalRead.model_validate(t) for t in data]
     }
 
-@router.get("/{id_terminal}", response_model=TerminalRead)
+@router.get("/search", response_model=TerminalIdentificacion)  # ← MOVER AQUÍ (ANTES de /{id_terminal})
+async def buscar_terminal_por_sucursal_y_codigo(
+    id_sucursal: UUID = Query(..., description="ID de la sucursal"),
+    codigo: str = Query(..., description="Código de la terminal"),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Busca una terminal específica por sucursal y código.
+    Retorna únicamente id_terminal y nombre de la terminal encontrada.
+    Solo considera terminales en estado "activo".
+    """
+    # 1) Obtener UUID del estado "activo"
+    estado_activo_id = await get_estado_id_por_clave("act", db)  # ← CORREGIDO: "act" no "ACT"
+    
+    # 2) Construir consulta con filtros exactos
+    stmt = select(Terminal).where(
+        Terminal.id_sucursal == id_sucursal,
+        Terminal.codigo == codigo,
+        Terminal.id_estado == estado_activo_id
+    )
+    
+    # 3) Ejecutar consulta
+    result = await db.execute(stmt)
+    terminal = result.scalar_one_or_none()
+    
+    # 4) Si no existe, devolver 404
+    if not terminal:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Terminal no encontrada para sucursal {id_sucursal} y código '{codigo}'"
+        )
+    
+    # 5) Retornar solo id_terminal y nombre
+    return TerminalIdentificacion.model_validate(terminal)
+
+@router.get("/{id_terminal}", response_model=TerminalRead)  # ← ESTE VA DESPUÉS de /search
 async def obtener_terminal(
     id_terminal: UUID,
     db: AsyncSession = Depends(get_async_db)
@@ -239,43 +274,6 @@ async def actualizar_terminal(
     await db.commit()
 
     return {"success": True, "data": TerminalRead.model_validate(terminal)}
-
-
-@router.get("/search", response_model=TerminalIdentificacion)
-async def buscar_terminal_por_sucursal_y_codigo(
-    id_sucursal: UUID = Query(..., description="ID de la sucursal"),
-    codigo: str = Query(..., description="Código de la terminal"),
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Busca una terminal específica por sucursal y código.
-    Retorna únicamente id_terminal y nombre de la terminal encontrada.
-    Solo considera terminales en estado "activo".
-    """
-    # 1) Obtener UUID del estado "activo"
-    estado_activo_id = await get_estado_id_por_clave("ACT", db)
-    
-    # 2) Construir consulta con filtros exactos
-    stmt = select(Terminal).where(
-        Terminal.id_sucursal == id_sucursal,
-        Terminal.codigo == codigo,
-        Terminal.id_estado == estado_activo_id
-    )
-    
-    # 3) Ejecutar consulta
-    result = await db.execute(stmt)
-    terminal = result.scalar_one_or_none()
-    
-    # 4) Si no existe, devolver 404
-    if not terminal:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Terminal no encontrada para sucursal {id_sucursal} y código '{codigo}'"
-        )
-    
-    # 5) Retornar solo id_terminal y nombre
-    return TerminalIdentificacion.model_validate(terminal)
-
 
 @router.delete("/{id_terminal}", status_code=200)
 async def eliminar_terminal(
