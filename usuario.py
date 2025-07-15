@@ -45,8 +45,9 @@ class Usuario(Base):
     id_rol = Column(PG_UUID(as_uuid=True), nullable=True)
     nombre = Column(String(80), nullable=False)
     apellido = Column(String(80), nullable=False)
-    email = Column(CITEXT, nullable=False)
+    email = Column(CITEXT, nullable=True)
     password_hash = Column(String, nullable=False)
+    usuario = Column(String(20), nullable=False, default=None)
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -68,7 +69,8 @@ class UsuarioBase(BaseModel):
     """
     nombre: str
     apellido: str
-    email: EmailStr
+    email: EmailStr = None  # Email opcional, puede ser None
+    usuario: str
     id_rol: Optional[UUID] = None
 
 class UsuarioCreate(UsuarioBase):
@@ -83,6 +85,7 @@ class UsuarioUpdate(BaseModel):
     nombre: Optional[str] = None
     apellido: Optional[str] = None
     email: Optional[EmailStr] = None
+    usuario: Optional[str] = None
     id_rol: Optional[UUID] = None
     password: Optional[str] = None  # Contraseña en texto plano (se hasheará automáticamente)
 
@@ -103,7 +106,7 @@ class LoginRequest(BaseModel):
     """
     Esquema para solicitud de login.
     """
-    email: EmailStr
+    usuario: str
     password: str
 
 class LoginResponse(BaseModel):
@@ -131,6 +134,7 @@ async def listar_usuarios(
     nombre: Optional[str] = Query(None),        # Filtro por nombre (ilike)
     apellido: Optional[str] = Query(None),      # Filtro por apellido (ilike)
     email: Optional[str] = Query(None),         # Filtro por email (ilike)
+    usuario: Optional[str] = Query(None),       # Filtro por usuario (ilike)
     skip: int = 0,                              # Paginación: offset
     limit: int = 100,                           # Paginación: máximo de registros
     db: AsyncSession = Depends(get_async_db)    # Sesión RLS inyectada
@@ -149,6 +153,8 @@ async def listar_usuarios(
         stmt = stmt.where(Usuario.apellido.ilike(f"%{apellido}%"))
     if email:
         stmt = stmt.where(Usuario.email.ilike(f"%{email}%"))
+    if usuario:
+        stmt = stmt.where(Usuario.usuario.ilike(f"%{usuario}%"))
 
     # 3) Contar total para paginación
     total_stmt = select(func.count()).select_from(stmt.subquery())
@@ -203,18 +209,18 @@ async def crear_usuario(
     # 1) Recuperar tenant y usuario del contexto RLS
     ctx = await obtener_contexto(db)
 
-    # 2) Verificar que el email no esté duplicado en la empresa
-    email_check = await db.execute(
+    # 2) Verificar que el usuario no esté duplicado en la empresa
+    usuario_check = await db.execute(
         select(Usuario).where(
-            Usuario.email == entrada.email,
+            Usuario.usuario == entrada.usuario,
             Usuario.id_empresa == ctx["tenant_id"],
             Usuario.id_estado != await get_estado_id_por_clave("del", db)
         )
     )
-    if email_check.scalar_one_or_none():
+    if usuario_check.scalar_one_or_none():
         raise HTTPException(
             status_code=409, 
-            detail="Ya existe un usuario con ese email en la empresa"
+            detail="Ya existe el nombre de usuario en la empresa"
         )
 
     # 3) Hashear contraseña usando función de PostgreSQL
@@ -228,6 +234,7 @@ async def crear_usuario(
         nombre=entrada.nombre,
         apellido=entrada.apellido,
         email=entrada.email,
+        usuario=entrada.usuario,
         password_hash=password_hash,
         id_rol=entrada.id_rol,
         id_empresa=ctx["tenant_id"]
@@ -245,10 +252,10 @@ async def crear_usuario(
     
     except Exception as e:
         await db.rollback()
-        if "uq_usuario_empresa_email_ci" in str(e):
+        if "uq_usuario_empresa_usuario_ci" in str(e):
             raise HTTPException(
                 status_code=409, 
-                detail="Ya existe un usuario con ese email en la empresa"
+                detail="Nombre de usuario ya existe en la empresa"
             )
         else:
             raise HTTPException(
@@ -286,21 +293,23 @@ async def actualizar_usuario(
         usuario.nombre = entrada.nombre
     if entrada.apellido is not None:
         usuario.apellido = entrada.apellido
-    if entrada.email is not None:
-        # Verificar email duplicado
-        email_check = await db.execute(
+    if entrada.usuario is not None:
+        # Verificar usuario duplicado
+        usuario_check = await db.execute(
             select(Usuario).where(
-                Usuario.email == entrada.email,
+                Usuario.usuario == entrada.usuario,
                 Usuario.id_empresa == ctx["tenant_id"],
                 Usuario.id_usuario != id_usuario,
                 Usuario.id_estado != await get_estado_id_por_clave("del", db)
             )
         )
-        if email_check.scalar_one_or_none():
+        if usuario_check.scalar_one_or_none():
             raise HTTPException(
                 status_code=409, 
-                detail="Ya existe otro usuario con ese email en la empresa"
+                detail="Ya existe otro usuario con ese nombre en la empresa"
             )
+        usuario.usuario = entrada.usuario
+    if entrada.email is not None:    
         usuario.email = entrada.email
     
     if entrada.id_rol is not None:
@@ -323,10 +332,10 @@ async def actualizar_usuario(
     
     except Exception as e:
         await db.rollback()
-        if "uq_usuario_empresa_email_ci" in str(e):
+        if "uq_usuario_empresa_usuario_ci" in str(e):
             raise HTTPException(
                 status_code=409, 
-                detail="Ya existe otro usuario con ese email en la empresa"
+                detail="El nombre de usuario ya existe en la empresa"
             )
         else:
             raise HTTPException(
@@ -365,20 +374,20 @@ async def validar_usuario(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Valida credenciales de usuario (email/password).
+    Valida credenciales de usuario (usuario/password).
     Retorna información del usuario si las credenciales son correctas.
     """
-    # 1) Buscar usuario por email en estado activo
+    # 1) Buscar usuario por usuario en estado activo
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
     stmt = select(Usuario).where(
-        Usuario.email == credentials.email,
+        Usuario.usuario == credentials.usuario,
         Usuario.id_estado == estado_activo_id
     )
     result = await db.execute(stmt)
     usuario = result.scalar_one_or_none()
 
-    # 2) Si no existe usuario con ese email
+    # 2) Si no existe usuario con ese usuario
     if not usuario:
         raise HTTPException(
             status_code=401, 
@@ -457,19 +466,19 @@ async def cambiar_password(
         "message": "Contraseña actualizada correctamente"
     }
 
-@router.get("/email/{email}", response_model=dict)
-async def buscar_usuario_por_email(
-    email: str,
+@router.get("/username/{usuario}", response_model=dict)
+async def buscar_usuario_por_username(
+    usuario: str,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Busca un usuario por su email.
-    Útil para verificar si un email ya está registrado.
+    Busca un usuario por su usuario.
+    Útil para verificar si un usuario ya está registrado.
     """
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
     stmt = select(Usuario).where(
-        Usuario.email == email,
+        Usuario.usuario == usuario,
         Usuario.id_estado == estado_activo_id
     )
     result = await db.execute(stmt)
