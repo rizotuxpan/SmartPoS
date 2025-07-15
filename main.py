@@ -24,6 +24,8 @@ from venta import router as venta_router
 from venta_detalle import router as venta_detalle_router
 from pago import router as pago_router
 from producto_variante import router as producto_variante_router
+from usuario import router as usuario_router
+
 # -------------------------------
 # Inicialización de la aplicación
 # -------------------------------
@@ -141,6 +143,12 @@ app.include_router(
     producto_variante_router,
     prefix="/variantes",
     tags=["Variantes de Productos"]
+)
+
+app.include_router(
+    usuario_router,
+    prefix="/usuarios",
+    tags=["Usuarios"]
 )
 
 # ---------------------------
