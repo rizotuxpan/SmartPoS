@@ -514,39 +514,6 @@ async def obtener_producto(
             "data": ProductoRead.model_validate(producto).model_dump()
         }
 
-@router.post("/", response_model=dict, status_code=201)
-async def crear_producto(
-    entrada: ProductoCreate,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Crea un nuevo producto. Aplica RLS y defaults de servidor.
-    """
-    ctx = await obtener_contexto(db)
-    nuevo = Producto(
-        sku             = entrada.sku,
-        codigo_barras   = entrada.codigo_barras,
-        nombre          = entrada.nombre,
-        descripcion     = entrada.descripcion,
-        precio_base     = entrada.precio_base,
-        es_kit          = entrada.es_kit,
-        vida_util_dias  = entrada.vida_util_dias,
-        id_marca        = entrada.id_marca,
-        id_umedida      = entrada.id_umedida,        
-        guid            = entrada.guid,
-        costo_u         = entrada.costo_u,        
-        id_categoria    = entrada.id_categoria,
-        id_subcategoria = entrada.id_subcategoria,
-        created_by      = ctx["user_id"],
-        modified_by     = ctx["user_id"],
-        id_empresa      = ctx["tenant_id"]
-    )
-    db.add(nuevo)
-    await db.flush()
-    await db.refresh(nuevo)
-    await db.commit()
-    return {"success": True, "data": ProductoRead.model_validate(nuevo)}
-
 @router.put("/{id_producto}", response_model=dict)
 async def actualizar_producto(
     id_producto: UUID,
