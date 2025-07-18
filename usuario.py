@@ -212,29 +212,14 @@ async def crear_usuario(
     Aplica RLS y defaults de servidor.
     """
     # 1) Recuperar tenant y usuario del contexto RLS
-    ctx = await obtener_contexto(db)
-
-    # 2) Verificar que el email no esté duplicado (si se proporciona)
-    if entrada.email:
-        email_check = await db.execute(
-            select(Usuario).where(
-                Usuario.email == entrada.email,
-                Usuario.id_empresa == ctx["tenant_id"],
-                Usuario.id_estado != await get_estado_id_por_clave("del", db)
-            )
-        )
-        if email_check.scalar_one_or_none():
-            raise HTTPException(
-                status_code=409, 
-                detail="Ya existe un usuario con ese email en la empresa"
-            )
+    ctx = await obtener_contexto(db)   
 
     # 3) Verificar que el usuario no esté duplicado (ahora es obligatorio)
     usuario_check = await db.execute(
         select(Usuario).where(
             Usuario.usuario == entrada.usuario,
             Usuario.id_empresa == ctx["tenant_id"],
-            Usuario.id_estado != await get_estado_id_por_clave("del", db)
+            Usuario.id_estado == await get_estado_id_por_clave("act", db)
         )
     )
     if usuario_check.scalar_one_or_none():
