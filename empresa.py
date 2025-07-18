@@ -21,6 +21,18 @@ from utils.estado import get_estado_id_por_clave
 # Utilidad para extraer tenant y usuario desde la sesión (RLS)
 from utils.contexto import obtener_contexto  # IMPORTANTE
 
+# IMPORTANTE: Importar modelo Usuario desde donde ya está definido
+# Asumiendo que está en un archivo models.py o similar
+# Ajusta la ruta según tu estructura de proyecto
+try:
+    from models.usuario import Usuario  # Ajusta la ruta según tu estructura
+except ImportError:
+    # Si no funciona, intenta con otras rutas comunes
+    try:
+        from usuario import Usuario
+    except ImportError:
+        from models import Usuario
+
 # --------------------------------------
 # Definición del modelo ORM (SQLAlchemy)
 # --------------------------------------
@@ -55,45 +67,6 @@ class Empresa(Base):
     )
     created_by = Column(PG_UUID(as_uuid=True), nullable=True)
     modified_by = Column(PG_UUID(as_uuid=True), nullable=True)
-
-# Importar modelo Usuario para creación automática
-class Usuario(Base):
-    __tablename__ = "usuario"
-
-    id_usuario = Column(
-        PG_UUID(as_uuid=True),
-        primary_key=True,
-        server_default=text("gen_random_uuid()")
-    )
-    id_empresa = Column(
-        PG_UUID(as_uuid=True),
-        nullable=False,
-        server_default=text("current_setting('app.current_tenant'::text)::uuid")
-    )
-    id_estado = Column(
-        PG_UUID(as_uuid=True),
-        nullable=False,
-        server_default=text("f_default_estatus_activo()")
-    )
-    id_rol = Column(PG_UUID(as_uuid=True), nullable=True)
-    nombre = Column(String(80), nullable=False)
-    apellido = Column(String(80), nullable=False)
-    email = Column(CITEXT, nullable=True)
-    password_hash = Column(String, nullable=False)
-    usuario = Column(String(20), nullable=False)
-    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        nullable=False
-    )
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False
-    )
 
 # ----------------------------------
 # Schemas de validación con Pydantic
