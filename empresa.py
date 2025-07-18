@@ -21,19 +21,21 @@ from utils.estado import get_estado_id_por_clave
 # Utilidad para extraer tenant y usuario desde la sesión (RLS)
 from utils.contexto import obtener_contexto  # IMPORTANTE
 
-# IMPORTANTE: Importar modelos Usuario y Sucursal desde donde ya están definidos
+# IMPORTANTE: Importar modelos Usuario, Sucursal y Terminal desde donde ya están definidos
 # Asumiendo que están en archivos separados
 # Ajusta la ruta según tu estructura de proyecto
 try:
     from models.usuario import Usuario  # Ajusta la ruta según tu estructura
     from models.sucursal import Sucursal
+    from models.terminal import Terminal
 except ImportError:
     # Si no funciona, intenta con otras rutas comunes
     try:
         from usuario import Usuario
         from sucursal import Sucursal
+        from terminal import Terminal
     except ImportError:
-        from models import Usuario, Sucursal
+        from models import Usuario, Sucursal, Terminal
 
 # --------------------------------------
 # Definición del modelo ORM (SQLAlchemy)
@@ -222,23 +224,36 @@ async def crear_empresa(
         )
         db.add(sucursal_principal)
         await db.flush()
+        await db.refresh(sucursal_principal)  # Obtener el ID de la sucursal
 
-        # 6) Commit de toda la transacción
+        # 6) Crear terminal principal automáticamente
+        terminal_principal = Terminal(
+            id_sucursal=sucursal_principal.id_sucursal,  # Usar el ID de la sucursal recién creada
+            codigo="00",
+            nombre="CAJA 0",
+            created_by=ctx["user_id"],
+            modified_by=ctx["user_id"]
+        )
+        db.add(terminal_principal)
+        await db.flush()
+
+        # 7) Commit de toda la transacción
         await db.commit()
 
         return {
             "success": True, 
-            "message": "Empresa creada exitosamente con usuario admin y sucursal principal",
+            "message": "Empresa creada exitosamente con usuario admin, sucursal principal y terminal",
             "data": EmpresaRead.model_validate(nueva),
             "admin_usuario": "admin",
-            "sucursal_principal": "00"
+            "sucursal_principal": "00",
+            "terminal_principal": "00"
         }
 
     except Exception as e:
         await db.rollback()
         raise HTTPException(
             status_code=500, 
-            detail=f"Error al crear empresa, usuario admin y sucursal principal: {str(e)}"
+            detail=f"Error al crear empresa, usuario admin, sucursal principal y terminal: {str(e)}"
         )
 
 @router.put("/{id_empresa}", response_model=dict)
@@ -305,7 +320,25 @@ async def eliminar_empresa(
             )
         )
 
-        # 4) Eliminar la sucursal principal "00" de esta empresa
+        # 4) Eliminar la terminal principal "00" de esta empresa
+        # Primero obtenemos el ID de la sucursal para eliminar la terminal
+        sucursal_result = await db.execute(
+            select(Sucursal.id_sucursal).where(
+                Sucursal.id_empresa == id_empresa,
+                Sucursal.codigo == "00"
+            )
+        )
+        sucursal_id = sucursal_result.scalar_one_or_none()
+        
+        if sucursal_id:
+            await db.execute(
+                delete(Terminal).where(
+                    Terminal.id_sucursal == sucursal_id,
+                    Terminal.codigo == "00"
+                )
+            )
+
+        # 5) Eliminar la sucursal principal "00" de esta empresa
         await db.execute(
             delete(Sucursal).where(
                 Sucursal.id_empresa == id_empresa,
@@ -313,15 +346,15 @@ async def eliminar_empresa(
             )
         )
 
-        # 5) Eliminar la empresa
+        # 6) Eliminar la empresa
         await db.execute(delete(Empresa).where(Empresa.id_empresa == id_empresa))
 
-        # 6) Commit de toda la transacción
+        # 7) Commit de toda la transacción
         await db.commit()
 
         return {
             "success": True, 
-            "message": "Empresa, usuario admin y sucursal principal eliminados permanentemente"
+            "message": "Empresa, usuario admin, sucursal principal y terminal eliminados permanentemente"
         }
 
     except HTTPException:
@@ -331,5 +364,5 @@ async def eliminar_empresa(
         await db.rollback()
         raise HTTPException(
             status_code=500, 
-            detail=f"Error al eliminar empresa, usuario admin y sucursal principal: {str(e)}"
+            detail=f"Error al eliminar empresa, usuario admin, sucursal principal y terminal: {str(e)}"
         )
