@@ -21,8 +21,11 @@ from utils.estado import get_estado_id_por_clave
 # Utilidad para extraer tenant y usuario desde la sesión (RLS)
 from utils.contexto import obtener_contexto
 
-# Importar modelos necesarios para joins (asegúrate de que existan)
+# Importar modelos necesarios para joins
 from producto import Producto, ProductoRead
+from categoria import Categoria, CategoriaRead
+from subcategoria import Subcategoria, SubcategoriaRead
+from marca import Marca, MarcaRead
 
 # ---------------------------
 # Modelos ORM SQLAlchemy para catálogos
@@ -71,50 +74,6 @@ class CatTamano(Base):
     descripcion = Column(Text)
     unidad_medida = Column(String(10))
     orden_visualizacion = Column(Integer, server_default="1")
-    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-# NUEVOS: Modelos ORM para Categoria, Subcategoria y Marca
-class Categoria(Base):
-    """Modelo ORM para catálogo de categorías"""
-    __tablename__ = "cat_categoria"
-    
-    id_categoria = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
-    nombre = Column(String(80), nullable=False)
-    descripcion = Column(Text)
-    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-class Subcategoria(Base):
-    """Modelo ORM para catálogo de subcategorías"""
-    __tablename__ = "cat_subcategoria"
-    
-    id_subcategoria = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    id_categoria = Column(PG_UUID(as_uuid=True), nullable=False)
-    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
-    nombre = Column(String(80), nullable=False)
-    descripcion = Column(Text)
-    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-class Marca(Base):
-    """Modelo ORM para catálogo de marcas"""
-    __tablename__ = "cat_marca"
-    
-    id_marca = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
-    nombre = Column(String(80), nullable=False)
-    descripcion = Column(Text)
     id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
     created_by = Column(PG_UUID(as_uuid=True), nullable=False)
     modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
@@ -191,28 +150,6 @@ class TamanoRead(BaseModel):
     descripcion: Optional[str] = None
     unidad_medida: Optional[str] = None
     orden_visualizacion: Optional[int] = None
-    model_config = {"from_attributes": True}
-
-# NUEVOS: Schemas para categoría, subcategoría y marca
-class CategoriaRead(BaseModel):
-    """Schema de lectura para categorías"""
-    id_categoria: UUID
-    nombre: str
-    descripcion: Optional[str] = None
-    model_config = {"from_attributes": True}
-
-class SubcategoriaRead(BaseModel):
-    """Schema de lectura para subcategorías"""
-    id_subcategoria: UUID
-    nombre: str
-    descripcion: Optional[str] = None
-    model_config = {"from_attributes": True}
-
-class MarcaRead(BaseModel):
-    """Schema de lectura para marcas"""
-    id_marca: UUID
-    nombre: str
-    descripcion: Optional[str] = None
     model_config = {"from_attributes": True}
 
 # ----------------------------------
