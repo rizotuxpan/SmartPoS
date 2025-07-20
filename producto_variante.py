@@ -77,6 +77,50 @@ class CatTamano(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+# NUEVOS: Modelos ORM para Categoria, Subcategoria y Marca
+class Categoria(Base):
+    """Modelo ORM para catálogo de categorías"""
+    __tablename__ = "cat_categoria"
+    
+    id_categoria = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
+    nombre = Column(String(80), nullable=False)
+    descripcion = Column(Text)
+    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class Subcategoria(Base):
+    """Modelo ORM para catálogo de subcategorías"""
+    __tablename__ = "cat_subcategoria"
+    
+    id_subcategoria = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id_categoria = Column(PG_UUID(as_uuid=True), nullable=False)
+    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
+    nombre = Column(String(80), nullable=False)
+    descripcion = Column(Text)
+    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class Marca(Base):
+    """Modelo ORM para catálogo de marcas"""
+    __tablename__ = "cat_marca"
+    
+    id_marca = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
+    nombre = Column(String(80), nullable=False)
+    descripcion = Column(Text)
+    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
 # ---------------------------
 # Modelo ORM SQLAlchemy
 # ---------------------------
@@ -147,6 +191,28 @@ class TamanoRead(BaseModel):
     descripcion: Optional[str] = None
     unidad_medida: Optional[str] = None
     orden_visualizacion: Optional[int] = None
+    model_config = {"from_attributes": True}
+
+# NUEVOS: Schemas para categoría, subcategoría y marca
+class CategoriaRead(BaseModel):
+    """Schema de lectura para categorías"""
+    id_categoria: UUID
+    nombre: str
+    descripcion: Optional[str] = None
+    model_config = {"from_attributes": True}
+
+class SubcategoriaRead(BaseModel):
+    """Schema de lectura para subcategorías"""
+    id_subcategoria: UUID
+    nombre: str
+    descripcion: Optional[str] = None
+    model_config = {"from_attributes": True}
+
+class MarcaRead(BaseModel):
+    """Schema de lectura para marcas"""
+    id_marca: UUID
+    nombre: str
+    descripcion: Optional[str] = None
     model_config = {"from_attributes": True}
 
 # ----------------------------------
@@ -327,18 +393,24 @@ async def listar_variantes(
     """
     Lista variantes de productos en estado "activo" con paginación, filtros opcionales
     y opción de expandir objetos relacionados.
+    INCLUYE SIEMPRE los nombres de categoría, subcategoría y marca para StringGrid.
     """
     # 1) Obtener UUID del estado "activo"
     estado_activo_id = await get_estado_id_por_clave("act", db)
 
+    # ===== CONSULTA ÚNICA CON TODOS LOS JOINS NECESARIOS =====
+    # Siempre incluimos joins para obtener los nombres, independientemente del valor de 'expandir'
     if expandir:
-        # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS =====
+        # ===== CONSULTA CON JOINS PARA OBJETOS RELACIONADOS COMPLETOS =====
         query = select(
             ProductoVariante,
             Producto,
             CatTalla,
             CatColor,
-            CatTamano
+            CatTamano,
+            Categoria,
+            Subcategoria,
+            Marca
         ).select_from(
             ProductoVariante.__table__
             .outerjoin(
@@ -369,66 +441,133 @@ async def listar_variantes(
                     CatTamano.id_estado == estado_activo_id
                 )
             )
+            .outerjoin(
+                Categoria.__table__,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Subcategoria.__table__,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Marca.__table__,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
+            )
         ).where(ProductoVariante.id_estado == estado_activo_id)
 
-        # ===== APLICAR FILTROS =====
-        if id_producto:
-            query = query.where(ProductoVariante.id_producto == id_producto)
-        if sku_variante:
-            query = query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
-        if codigo_barras_var:
-            query = query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
-        if precio is not None:
-            query = query.where(ProductoVariante.precio == precio)
-        if precio_min is not None:
-            query = query.where(ProductoVariante.precio >= precio_min)
-        if precio_max is not None:
-            query = query.where(ProductoVariante.precio <= precio_max)
-        if id_talla:
-            query = query.where(ProductoVariante.id_talla == id_talla)
-        if id_color:
-            query = query.where(ProductoVariante.id_color == id_color)
-        if id_tamano:
-            query = query.where(ProductoVariante.id_tamano == id_tamano)
+    else:
+        # ===== CONSULTA OPTIMIZADA PARA STRINGGRID (SIN OBJETOS COMPLETOS) =====
+        query = select(
+            ProductoVariante,
+            Producto.nombre.label('producto_nombre'),
+            Categoria.nombre.label('categoria_nombre'),
+            Subcategoria.nombre.label('subcategoria_nombre'),
+            Marca.nombre.label('marca_nombre')
+        ).select_from(
+            ProductoVariante.__table__
+            .outerjoin(
+                Producto.__table__,
+                and_(
+                    ProductoVariante.id_producto == Producto.id_producto,
+                    Producto.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Categoria.__table__,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Subcategoria.__table__,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Marca.__table__,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
+            )
+        ).where(ProductoVariante.id_estado == estado_activo_id)
 
-        # Contar total (sin expansión para eficiencia)
-        count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
-            ProductoVariante.id_estado == estado_activo_id
-        )
-        
-        # Aplicar mismos filtros al conteo
-        if id_producto:
-            count_query = count_query.where(ProductoVariante.id_producto == id_producto)
-        if sku_variante:
-            count_query = count_query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
-        if codigo_barras_var:
-            count_query = count_query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
-        if precio is not None:
-            count_query = count_query.where(ProductoVariante.precio == precio)
-        if precio_min is not None:
-            count_query = count_query.where(ProductoVariante.precio >= precio_min)
-        if precio_max is not None:
-            count_query = count_query.where(ProductoVariante.precio <= precio_max)
-        if id_talla:
-            count_query = count_query.where(ProductoVariante.id_talla == id_talla)
-        if id_color:
-            count_query = count_query.where(ProductoVariante.id_color == id_color)
-        if id_tamano:
-            count_query = count_query.where(ProductoVariante.id_tamano == id_tamano)
+    # ===== APLICAR FILTROS =====
+    if id_producto:
+        query = query.where(ProductoVariante.id_producto == id_producto)
+    if sku_variante:
+        query = query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
+    if codigo_barras_var:
+        query = query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
+    if precio is not None:
+        query = query.where(ProductoVariante.precio == precio)
+    if precio_min is not None:
+        query = query.where(ProductoVariante.precio >= precio_min)
+    if precio_max is not None:
+        query = query.where(ProductoVariante.precio <= precio_max)
+    if id_talla:
+        query = query.where(ProductoVariante.id_talla == id_talla)
+    if id_color:
+        query = query.where(ProductoVariante.id_color == id_color)
+    if id_tamano:
+        query = query.where(ProductoVariante.id_tamano == id_tamano)
 
-        total = await db.scalar(count_query)
+    # ===== CONTAR TOTAL =====
+    count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
+        ProductoVariante.id_estado == estado_activo_id
+    )
+    
+    # Aplicar mismos filtros al conteo
+    if id_producto:
+        count_query = count_query.where(ProductoVariante.id_producto == id_producto)
+    if sku_variante:
+        count_query = count_query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
+    if codigo_barras_var:
+        count_query = count_query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
+    if precio is not None:
+        count_query = count_query.where(ProductoVariante.precio == precio)
+    if precio_min is not None:
+        count_query = count_query.where(ProductoVariante.precio >= precio_min)
+    if precio_max is not None:
+        count_query = count_query.where(ProductoVariante.precio <= precio_max)
+    if id_talla:
+        count_query = count_query.where(ProductoVariante.id_talla == id_talla)
+    if id_color:
+        count_query = count_query.where(ProductoVariante.id_color == id_color)
+    if id_tamano:
+        count_query = count_query.where(ProductoVariante.id_tamano == id_tamano)
 
-        # Ejecutar consulta paginada
-        result = await db.execute(query.offset(skip).limit(limit))
-        
-        # ===== CONSTRUIR RESPUESTA EXPANDIDA =====
-        data = []
+    total = await db.scalar(count_query)
+
+    # ===== EJECUTAR CONSULTA PAGINADA =====
+    result = await db.execute(query.offset(skip).limit(limit))
+    
+    # ===== CONSTRUIR RESPUESTA =====
+    data = []
+    
+    if expandir:
+        # ===== RESPUESTA EXPANDIDA CON OBJETOS COMPLETOS =====
         for row in result:
             variante_obj = row[0]  # Objeto ProductoVariante
             producto_obj = row[1]  # Objeto Producto (puede ser None)
             talla_obj = row[2]     # Objeto CatTalla (puede ser None)
             color_obj = row[3]     # Objeto CatColor (puede ser None)
             tamano_obj = row[4]    # Objeto CatTamano (puede ser None)
+            categoria_obj = row[5] # Objeto Categoria (puede ser None)
+            subcategoria_obj = row[6] # Objeto Subcategoria (puede ser None)
+            marca_obj = row[7]     # Objeto Marca (puede ser None)
             
             # Convertir variante base
             variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
@@ -438,66 +577,37 @@ async def listar_variantes(
             variante_dict['talla'] = TallaRead.model_validate(talla_obj).model_dump() if talla_obj else None
             variante_dict['color'] = ColorRead.model_validate(color_obj).model_dump() if color_obj else None
             variante_dict['tamano'] = TamanoRead.model_validate(tamano_obj).model_dump() if tamano_obj else None
+            variante_dict['categoria'] = CategoriaRead.model_validate(categoria_obj).model_dump() if categoria_obj else None
+            variante_dict['subcategoria'] = SubcategoriaRead.model_validate(subcategoria_obj).model_dump() if subcategoria_obj else None
+            variante_dict['marca'] = MarcaRead.model_validate(marca_obj).model_dump() if marca_obj else None
+            
+            # AÑADIR NOMBRES DIRECTOS PARA STRINGGRID
+            variante_dict['producto_nombre'] = producto_obj.nombre if producto_obj else None
+            variante_dict['categoria_nombre'] = categoria_obj.nombre if categoria_obj else None
+            variante_dict['subcategoria_nombre'] = subcategoria_obj.nombre if subcategoria_obj else None
+            variante_dict['marca_nombre'] = marca_obj.nombre if marca_obj else None
             
             data.append(variante_dict)
 
     else:
-        # ===== CONSULTA SIN JOINS (VERSIÓN SIMPLIFICADA) =====
-        query = select(ProductoVariante).where(ProductoVariante.id_estado == estado_activo_id)
-        
-        # Aplicar filtros
-        if id_producto:
-            query = query.where(ProductoVariante.id_producto == id_producto)
-        if sku_variante:
-            query = query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
-        if codigo_barras_var:
-            query = query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
-        if precio is not None:
-            query = query.where(ProductoVariante.precio == precio)
-        if precio_min is not None:
-            query = query.where(ProductoVariante.precio >= precio_min)
-        if precio_max is not None:
-            query = query.where(ProductoVariante.precio <= precio_max)
-        if id_talla:
-            query = query.where(ProductoVariante.id_talla == id_talla)
-        if id_color:
-            query = query.where(ProductoVariante.id_color == id_color)
-        if id_tamano:
-            query = query.where(ProductoVariante.id_tamano == id_tamano)
-
-        # Contar total
-        count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
-            ProductoVariante.id_estado == estado_activo_id
-        )
-        
-        # Aplicar mismos filtros al conteo
-        if id_producto:
-            count_query = count_query.where(ProductoVariante.id_producto == id_producto)
-        if sku_variante:
-            count_query = count_query.where(ProductoVariante.sku_variante.ilike(f"%{sku_variante}%"))
-        if codigo_barras_var:
-            count_query = count_query.where(ProductoVariante.codigo_barras_var.ilike(f"%{codigo_barras_var}%"))
-        if precio is not None:
-            count_query = count_query.where(ProductoVariante.precio == precio)
-        if precio_min is not None:
-            count_query = count_query.where(ProductoVariante.precio >= precio_min)
-        if precio_max is not None:
-            count_query = count_query.where(ProductoVariante.precio <= precio_max)
-        if id_talla:
-            count_query = count_query.where(ProductoVariante.id_talla == id_talla)
-        if id_color:
-            count_query = count_query.where(ProductoVariante.id_color == id_color)
-        if id_tamano:
-            count_query = count_query.where(ProductoVariante.id_tamano == id_tamano)
-
-        total = await db.scalar(count_query)
-
-        # Ejecutar consulta paginada
-        result = await db.execute(query.offset(skip).limit(limit))
-        variantes = result.scalars().all()
-
-        # Serializar datos sin expansión
-        data = [ProductoVarianteRead.model_validate(v).model_dump() for v in variantes]
+        # ===== RESPUESTA OPTIMIZADA PARA STRINGGRID =====
+        for row in result:
+            variante_obj = row[0]  # Objeto ProductoVariante
+            producto_nombre = row[1]      # String
+            categoria_nombre = row[2]     # String (puede ser None)
+            subcategoria_nombre = row[3]  # String (puede ser None)
+            marca_nombre = row[4]         # String (puede ser None)
+            
+            # Convertir variante base
+            variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
+            
+            # AÑADIR NOMBRES DIRECTOS PARA STRINGGRID
+            variante_dict['producto_nombre'] = producto_nombre
+            variante_dict['categoria_nombre'] = categoria_nombre
+            variante_dict['subcategoria_nombre'] = subcategoria_nombre
+            variante_dict['marca_nombre'] = marca_nombre
+            
+            data.append(variante_dict)
 
     return {
         "success": True,
@@ -548,7 +658,10 @@ async def obtener_variante(
             Producto,
             CatTalla,
             CatColor,
-            CatTamano
+            CatTamano,
+            Categoria,
+            Subcategoria,
+            Marca
         ).select_from(
             ProductoVariante.__table__
             .outerjoin(
@@ -579,6 +692,27 @@ async def obtener_variante(
                     CatTamano.id_estado == estado_activo_id
                 )
             )
+            .outerjoin(
+                Categoria.__table__,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Subcategoria.__table__,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Marca.__table__,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
+            )
         ).where(
             and_(
                 ProductoVariante.id_producto_variante == id_producto_variante,
@@ -598,6 +732,9 @@ async def obtener_variante(
         talla_obj = row[2]
         color_obj = row[3]
         tamano_obj = row[4]
+        categoria_obj = row[5]
+        subcategoria_obj = row[6]
+        marca_obj = row[7]
         
         variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
         
@@ -605,6 +742,15 @@ async def obtener_variante(
         variante_dict['talla'] = TallaRead.model_validate(talla_obj).model_dump() if talla_obj else None
         variante_dict['color'] = ColorRead.model_validate(color_obj).model_dump() if color_obj else None
         variante_dict['tamano'] = TamanoRead.model_validate(tamano_obj).model_dump() if tamano_obj else None
+        variante_dict['categoria'] = CategoriaRead.model_validate(categoria_obj).model_dump() if categoria_obj else None
+        variante_dict['subcategoria'] = SubcategoriaRead.model_validate(subcategoria_obj).model_dump() if subcategoria_obj else None
+        variante_dict['marca'] = MarcaRead.model_validate(marca_obj).model_dump() if marca_obj else None
+        
+        # AÑADIR NOMBRES DIRECTOS PARA STRINGGRID
+        variante_dict['producto_nombre'] = producto_obj.nombre if producto_obj else None
+        variante_dict['categoria_nombre'] = categoria_obj.nombre if categoria_obj else None
+        variante_dict['subcategoria_nombre'] = subcategoria_obj.nombre if subcategoria_obj else None
+        variante_dict['marca_nombre'] = marca_obj.nombre if marca_obj else None
         
         return {
             "success": True,
@@ -613,8 +759,44 @@ async def obtener_variante(
         }
     
     else:
-        # Consulta simple sin joins
-        query = select(ProductoVariante).where(
+        # Consulta optimizada con nombres
+        query = select(
+            ProductoVariante,
+            Producto.nombre.label('producto_nombre'),
+            Categoria.nombre.label('categoria_nombre'),
+            Subcategoria.nombre.label('subcategoria_nombre'),
+            Marca.nombre.label('marca_nombre')
+        ).select_from(
+            ProductoVariante.__table__
+            .outerjoin(
+                Producto.__table__,
+                and_(
+                    ProductoVariante.id_producto == Producto.id_producto,
+                    Producto.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Categoria.__table__,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Subcategoria.__table__,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Marca.__table__,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
+            )
+        ).where(
             and_(
                 ProductoVariante.id_producto_variante == id_producto_variante,
                 ProductoVariante.id_estado == estado_activo_id
@@ -622,15 +804,29 @@ async def obtener_variante(
         )
         
         result = await db.execute(query)
-        variante = result.scalar_one_or_none()
+        row = result.first()
         
-        if not variante:
+        if not row:
             raise HTTPException(status_code=404, detail="Variante no encontrada")
+        
+        variante_obj = row[0]
+        producto_nombre = row[1]
+        categoria_nombre = row[2]
+        subcategoria_nombre = row[3]
+        marca_nombre = row[4]
+        
+        variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
+        
+        # AÑADIR NOMBRES DIRECTOS PARA STRINGGRID
+        variante_dict['producto_nombre'] = producto_nombre
+        variante_dict['categoria_nombre'] = categoria_nombre
+        variante_dict['subcategoria_nombre'] = subcategoria_nombre
+        variante_dict['marca_nombre'] = marca_nombre
         
         return {
             "success": True,
             "expandido": expandir,
-            "data": ProductoVarianteRead.model_validate(variante).model_dump()
+            "data": variante_dict
         }
 
 @router.post("/", response_model=dict, status_code=201)
@@ -790,7 +986,10 @@ async def listar_variantes_por_producto(
             Producto,
             CatTalla,
             CatColor,
-            CatTamano
+            CatTamano,
+            Categoria,
+            Subcategoria,
+            Marca
         ).select_from(
             ProductoVariante.__table__
             .outerjoin(
@@ -821,6 +1020,27 @@ async def listar_variantes_por_producto(
                     CatTamano.id_estado == estado_activo_id
                 )
             )
+            .outerjoin(
+                Categoria.__table__,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Subcategoria.__table__,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Marca.__table__,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
+            )
         ).where(
             and_(
                 ProductoVariante.id_producto == id_producto,
@@ -848,6 +1068,9 @@ async def listar_variantes_por_producto(
             talla_obj = row[2]
             color_obj = row[3]
             tamano_obj = row[4]
+            categoria_obj = row[5]
+            subcategoria_obj = row[6]
+            marca_obj = row[7]
             
             variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
             
@@ -855,11 +1078,20 @@ async def listar_variantes_por_producto(
             variante_dict['talla'] = TallaRead.model_validate(talla_obj).model_dump() if talla_obj else None
             variante_dict['color'] = ColorRead.model_validate(color_obj).model_dump() if color_obj else None
             variante_dict['tamano'] = TamanoRead.model_validate(tamano_obj).model_dump() if tamano_obj else None
+            variante_dict['categoria'] = CategoriaRead.model_validate(categoria_obj).model_dump() if categoria_obj else None
+            variante_dict['subcategoria'] = SubcategoriaRead.model_validate(subcategoria_obj).model_dump() if subcategoria_obj else None
+            variante_dict['marca'] = MarcaRead.model_validate(marca_obj).model_dump() if marca_obj else None
+            
+            # AÑADIR NOMBRES DIRECTOS PARA STRINGGRID
+            variante_dict['producto_nombre'] = producto_obj.nombre if producto_obj else None
+            variante_dict['categoria_nombre'] = categoria_obj.nombre if categoria_obj else None
+            variante_dict['subcategoria_nombre'] = subcategoria_obj.nombre if subcategoria_obj else None
+            variante_dict['marca_nombre'] = marca_obj.nombre if marca_obj else None
             
             data.append(variante_dict)
     
     else:
-        # Consulta simple sin joins
+        # Consulta simple con nombres
         count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
             and_(
                 ProductoVariante.id_producto == id_producto,
@@ -868,7 +1100,43 @@ async def listar_variantes_por_producto(
         )
         total = await db.scalar(count_query)
         
-        query = select(ProductoVariante).where(
+        query = select(
+            ProductoVariante,
+            Producto.nombre.label('producto_nombre'),
+            Categoria.nombre.label('categoria_nombre'),
+            Subcategoria.nombre.label('subcategoria_nombre'),
+            Marca.nombre.label('marca_nombre')
+        ).select_from(
+            ProductoVariante.__table__
+            .outerjoin(
+                Producto.__table__,
+                and_(
+                    ProductoVariante.id_producto == Producto.id_producto,
+                    Producto.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Categoria.__table__,
+                and_(
+                    Producto.id_categoria == Categoria.id_categoria,
+                    Categoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Subcategoria.__table__,
+                and_(
+                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                    Subcategoria.id_estado == estado_activo_id
+                )
+            )
+            .outerjoin(
+                Marca.__table__,
+                and_(
+                    Producto.id_marca == Marca.id_marca,
+                    Marca.id_estado == estado_activo_id
+                )
+            )
+        ).where(
             and_(
                 ProductoVariante.id_producto == id_producto,
                 ProductoVariante.id_estado == estado_activo_id
@@ -876,9 +1144,24 @@ async def listar_variantes_por_producto(
         ).offset(skip).limit(limit)
         
         result = await db.execute(query)
-        variantes = result.scalars().all()
         
-        data = [ProductoVarianteRead.model_validate(v).model_dump() for v in variantes]
+        data = []
+        for row in result:
+            variante_obj = row[0]
+            producto_nombre = row[1]
+            categoria_nombre = row[2]
+            subcategoria_nombre = row[3]
+            marca_nombre = row[4]
+            
+            variante_dict = ProductoVarianteRead.model_validate(variante_obj).model_dump()
+            
+            # AÑADIR NOMBRES DIRECTOS PARA STRINGGRID
+            variante_dict['producto_nombre'] = producto_nombre
+            variante_dict['categoria_nombre'] = categoria_nombre
+            variante_dict['subcategoria_nombre'] = subcategoria_nombre
+            variante_dict['marca_nombre'] = marca_nombre
+            
+            data.append(variante_dict)
     
     return {
         "success": True,
