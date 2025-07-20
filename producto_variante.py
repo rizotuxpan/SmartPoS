@@ -321,6 +321,12 @@ async def listar_variantes(
     id_color: Optional[UUID] = Query(None, description="Filtro por ID de color"),
     id_tamano: Optional[UUID] = Query(None, description="Filtro por ID de tamaño"),
     
+    # ===== NUEVOS FILTROS POR NOMBRES =====
+    producto_nombre: Optional[str] = Query(None, description="Filtro por nombre del producto"),
+    marca_nombre: Optional[str] = Query(None, description="Filtro por nombre de la marca"),
+    categoria_nombre: Optional[str] = Query(None, description="Filtro por nombre de la categoría"),
+    subcategoria_nombre: Optional[str] = Query(None, description="Filtro por nombre de la subcategoría"),
+    
     # ===== PARÁMETROS DE CONFIGURACIÓN =====
     expandir: bool = Query(False, description="Incluir objetos relacionados completos"),
     skip: int = Query(0, ge=0, description="Número de registros a omitir"),
@@ -460,11 +466,49 @@ async def listar_variantes(
         query = query.where(ProductoVariante.id_color == id_color)
     if id_tamano:
         query = query.where(ProductoVariante.id_tamano == id_tamano)
+    
+    # ===== NUEVOS FILTROS POR NOMBRES =====
+    if producto_nombre:
+        query = query.where(Producto.nombre.ilike(f"%{producto_nombre}%"))
+    if marca_nombre:
+        query = query.where(Marca.nombre.ilike(f"%{marca_nombre}%"))
+    if categoria_nombre:
+        query = query.where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
+    if subcategoria_nombre:
+        query = query.where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
 
     # ===== CONTAR TOTAL =====
-    count_query = select(func.count(ProductoVariante.id_producto_variante)).where(
-        ProductoVariante.id_estado == estado_activo_id
-    )
+    count_query = select(func.count(ProductoVariante.id_producto_variante)).select_from(
+        ProductoVariante.__table__
+        .outerjoin(
+            Producto.__table__,
+            and_(
+                ProductoVariante.id_producto == Producto.id_producto,
+                Producto.id_estado == estado_activo_id
+            )
+        )
+        .outerjoin(
+            Categoria.__table__,
+            and_(
+                Producto.id_categoria == Categoria.id_categoria,
+                Categoria.id_estado == estado_activo_id
+            )
+        )
+        .outerjoin(
+            Subcategoria.__table__,
+            and_(
+                Producto.id_subcategoria == Subcategoria.id_subcategoria,
+                Subcategoria.id_estado == estado_activo_id
+            )
+        )
+        .outerjoin(
+            Marca.__table__,
+            and_(
+                Producto.id_marca == Marca.id_marca,
+                Marca.id_estado == estado_activo_id
+            )
+        )
+    ).where(ProductoVariante.id_estado == estado_activo_id)
     
     # Aplicar mismos filtros al conteo
     if id_producto:
@@ -485,6 +529,16 @@ async def listar_variantes(
         count_query = count_query.where(ProductoVariante.id_color == id_color)
     if id_tamano:
         count_query = count_query.where(ProductoVariante.id_tamano == id_tamano)
+    
+    # ===== NUEVOS FILTROS POR NOMBRES EN EL CONTEO =====
+    if producto_nombre:
+        count_query = count_query.where(Producto.nombre.ilike(f"%{producto_nombre}%"))
+    if marca_nombre:
+        count_query = count_query.where(Marca.nombre.ilike(f"%{marca_nombre}%"))
+    if categoria_nombre:
+        count_query = count_query.where(Categoria.nombre.ilike(f"%{categoria_nombre}%"))
+    if subcategoria_nombre:
+        count_query = count_query.where(Subcategoria.nombre.ilike(f"%{subcategoria_nombre}%"))
 
     total = await db.scalar(count_query)
 
@@ -565,6 +619,12 @@ async def listar_variantes(
                 "id_talla": str(id_talla) if id_talla else None,
                 "id_color": str(id_color) if id_color else None,
                 "id_tamano": str(id_tamano) if id_tamano else None
+            },
+            "nombres": {
+                "producto_nombre": producto_nombre,
+                "marca_nombre": marca_nombre,
+                "categoria_nombre": categoria_nombre,
+                "subcategoria_nombre": subcategoria_nombre
             }
         },
         "paginacion": {
