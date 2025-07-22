@@ -25,12 +25,13 @@ from venta_detalle import router as venta_detalle_router
 from pago import router as pago_router
 from producto_variante import router as producto_variante_router
 from usuario import router as usuario_router
+from megacontrol import router as megacontrol_router
 
 # -------------------------------
 # Inicialización de la aplicación
 # -------------------------------
 app = FastAPI(
-    title="SmartPoS 2025"            # Nombre de la API que aparecerá en la documentación Swagger
+    title="Mega Venta edición 2025"            # Nombre de la API que aparecerá en la documentación Swagger
 )
 
 # -------------------------------------------
@@ -149,6 +150,12 @@ app.include_router(
     usuario_router,
     prefix="/usuarios",
     tags=["Usuarios"]
+)
+
+app.include_router(
+    megacontrol_router,
+    prefix="/megacontrol",
+    tags=["Activación de Licencias"]
 )
 
 # ---------------------------
