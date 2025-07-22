@@ -69,8 +69,9 @@ async def activar_licencia(
     """
     try:
         # Configurar variables de sesión requeridas por los triggers
-        await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
-        await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
+        # PostgreSQL SET no acepta parámetros, usar valores literales
+        await db.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+        await db.execute(text(f"SET app.usuario = '{user_id}'"))
         
         # Insertar nueva licencia
         insert_query = text("""
@@ -157,8 +158,8 @@ async def consultar_activaciones(
     """
     try:
         # Configurar variables de sesión
-        await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
-        await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
+        await db.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+        await db.execute(text(f"SET app.usuario = '{user_id}'"))
         
         # Validar UUID de empresa
         try:
@@ -228,8 +229,8 @@ async def consultar_licencia(
     """
     try:
         # Configurar variables de sesión
-        await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
-        await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
+        await db.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+        await db.execute(text(f"SET app.usuario = '{user_id}'"))
         
         # Validar UUID
         try:
