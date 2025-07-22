@@ -1,38 +1,34 @@
 # megacontrol.py
 # ---------------------------
 # Módulo de endpoints REST para activación de licencias.
-# Usa FastAPI, SQLAlchemy Async y Pydantic para validación.
-# La tabla licencias NO tiene RLS activado.
+# Versión mínima y limpia - SIN dependencias problemáticas
 # ---------------------------
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field, validator
-from typing import Optional
-from sqlalchemy import select, text
+from typing import Optional, AsyncGenerator
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 import uuid as uuid_lib
 
-# Importar solo lo que necesitamos del módulo db
+# Importar SOLO lo necesario
 from db import AsyncSessionLocal
 
 # -------------------------
-# Dependencia personalizada para tablas sin RLS
+# Dependencia SIN RLS
 # -------------------------
-async def get_db_no_rls():
-    """
-    Dependencia para obtener sesión de BD sin configurar RLS.
-    Para tablas que no tienen Row Level Security habilitado.
-    """
+async def get_db_simple() -> AsyncGenerator[AsyncSession, None]:
+    """Sesión de BD simple sin RLS."""
     async with AsyncSessionLocal() as db:
         yield db
 
 # -------------------------
-# Schemas Pydantic
+# Schemas
 # -------------------------
 class LicenseActivationRequest(BaseModel):
-    hardware_fingerprint: str = Field(..., min_length=64, max_length=64, description="Huella del hardware (64 caracteres)")
-    company_uuid: str = Field(..., description="UUID de la empresa")
+    hardware_fingerprint: str = Field(..., min_length=64, max_length=64)
+    company_uuid: str = Field(...)
     
     @validator('hardware_fingerprint')
     def validate_hardware_fingerprint(cls, v):
@@ -51,47 +47,24 @@ class LicenseActivationRequest(BaseModel):
 class LicenseActivationResponse(BaseModel):
     success: bool
     message: str
-    activation_id: Optional[str] = None  # UUID como string
+    activation_id: Optional[str] = None
     activation_timestamp: Optional[datetime] = None
 
-# ---------------------------
-# Router y Endpoints
-# ---------------------------
+# -------------------------
+# Router
+# -------------------------
 router = APIRouter()
 
 @router.post("/", response_model=LicenseActivationResponse, summary="Activar Licencia")
 async def activar_licencia(
     request: LicenseActivationRequest,
-    db: AsyncSession = Depends(get_async_db),
     tenant_id: str = Header(..., alias="Tenant_ID"),
-    user_id: str = Header(..., alias="User_ID")
+    user_id: str = Header(..., alias="User_ID"),
+    db: AsyncSession = Depends(get_db_simple)
 ):
-    """
-    Activa una licencia verificando que el UUID de empresa exista 
-    y registrando la activación en la tabla license_activations.
-    """
+    """Activa una licencia."""
     try:
-        # Establecer variables de sesión para RLS
-        await db.execute(text("SET SESSION app.tenant_id = :tenant_id"), {"tenant_id": tenant_id})
-        await db.execute(text("SET SESSION app.user_id = :user_id"), {"user_id": user_id})
-        
-        # Verificar que existe la empresa
-        empresa_query = text("""
-            SELECT id_empresa 
-            FROM empresa 
-            WHERE id_empresa = :company_uuid
-        """)
-        
-        result = await db.execute(empresa_query, {"company_uuid": request.company_uuid})
-        empresa = result.fetchone()
-        
-        if not empresa:
-            raise HTTPException(
-                status_code=404, 
-                detail={"message": "La empresa especificada no existe en el sistema"}
-            )
-        
-        # Insertar registro de activación
+        # Insertar directamente - PostgreSQL validará la foreign key
         insert_query = text("""
             INSERT INTO licencias 
             (id_empresa, hardware_fingerprint, activation_timestamp, status)
@@ -102,57 +75,54 @@ async def activar_licencia(
         
         activation_timestamp = datetime.now(timezone.utc)
         
-        activation_result = await db.execute(insert_query, {
+        result = await db.execute(insert_query, {
             "id_empresa": request.company_uuid,
             "hardware_fingerprint": request.hardware_fingerprint,
             "activation_timestamp": activation_timestamp
         })
         
-        new_activation = activation_result.fetchone()
+        new_activation = result.fetchone()
         await db.commit()
         
         return LicenseActivationResponse(
             success=True,
             message="Licencia activada exitosamente",
-            activation_id=new_activation.id,
+            activation_id=str(new_activation.id),
             activation_timestamp=new_activation.activation_timestamp
         )
         
-    except HTTPException:
-        await db.rollback()
-        raise
     except Exception as e:
         await db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail={"message": f"Error interno del servidor: {str(e)}"}
-        )
+        
+        # Detectar error de foreign key
+        if "fk_licencias_empresa" in str(e) or "foreign key constraint" in str(e).lower():
+            raise HTTPException(
+                status_code=404,
+                detail={"message": "La empresa especificada no existe en el sistema"}
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail={"message": f"Error interno del servidor: {str(e)}"}
+            )
 
 @router.get("/activations/{company_uuid}", summary="Consultar Activaciones")
 async def consultar_activaciones(
     company_uuid: str,
-    db: AsyncSession = Depends(get_async_db),
     tenant_id: str = Header(..., alias="Tenant_ID"),
     user_id: str = Header(..., alias="User_ID"),
+    db: AsyncSession = Depends(get_db_simple),
     limit: int = 100
 ):
-    """
-    Consulta el historial de activaciones para una empresa específica.
-    """
+    """Consulta activaciones de una empresa."""
     try:
-        # Establecer variables de sesión para RLS
-        await db.execute(text("SET SESSION app.tenant_id = :tenant_id"), {"tenant_id": tenant_id})
-        await db.execute(text("SET SESSION app.user_id = :user_id"), {"user_id": user_id})
-        
         query = text("""
             SELECT 
                 l.id,
                 l.hardware_fingerprint,
                 l.activation_timestamp,
-                l.status,
-                e.nombre as empresa_nombre
+                l.status
             FROM licencias l
-            JOIN empresa e ON l.id_empresa = e.id_empresa
             WHERE l.id_empresa = :company_uuid
             ORDER BY l.activation_timestamp DESC
             LIMIT :limit
@@ -166,11 +136,10 @@ async def consultar_activaciones(
         activations = []
         for row in result.fetchall():
             activations.append({
-                "id": row.id,
+                "id": str(row.id),
                 "hardware_fingerprint": row.hardware_fingerprint,
                 "activation_timestamp": row.activation_timestamp,
-                "status": row.status,
-                "empresa_nombre": row.empresa_nombre
+                "status": row.status
             })
         
         return {
