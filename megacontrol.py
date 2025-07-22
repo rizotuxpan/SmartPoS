@@ -29,8 +29,8 @@ async def get_db_simple() -> AsyncGenerator[AsyncSession, None]:
 class LicenseActivationRequest(BaseModel):
     hardware_fingerprint: str = Field(..., min_length=64, max_length=64)
     company_uuid: str = Field(...)
-    tipo_licencia: Literal["trial", "perpetua", "suscripción", "OEM"] = Field(default="trial")
-    created_by: str = Field(...)  # UUID del usuario que crea la licencia
+    tipo_licencia: Optional[Literal["trial", "perpetua", "suscripción", "OEM"]] = Field(default="trial")
+    created_by: Optional[str] = Field(default=None)  # Opcional - se usará user_id del header si no se proporciona
     
     @validator('hardware_fingerprint')
     def validate_hardware_fingerprint(cls, v):
@@ -48,10 +48,11 @@ class LicenseActivationRequest(BaseModel):
         
     @validator('created_by')
     def validate_created_by(cls, v):
-        try:
-            uuid_lib.UUID(v)
-        except ValueError:
-            raise ValueError('El UUID de created_by no tiene un formato válido')
+        if v is not None:
+            try:
+                uuid_lib.UUID(v)
+            except ValueError:
+                raise ValueError('El UUID de created_by no tiene un formato válido')
         return v
 
 class LicenseActivationResponse(BaseModel):
@@ -65,14 +66,15 @@ class LicenseActivationResponse(BaseModel):
 
 class LicenseStatusUpdate(BaseModel):
     nuevo_estatus: Literal["activa", "revocada", "expirada", "suspendida"] = Field(...)
-    modified_by: str = Field(...)  # UUID del usuario que modifica
+    modified_by: Optional[str] = Field(default=None)  # Opcional - se usará user_id del header si no se proporciona
     
     @validator('modified_by')
     def validate_modified_by(cls, v):
-        try:
-            uuid_lib.UUID(v)
-        except ValueError:
-            raise ValueError('El UUID de modified_by no tiene un formato válido')
+        if v is not None:
+            try:
+                uuid_lib.UUID(v)
+            except ValueError:
+                raise ValueError('El UUID de modified_by no tiene un formato válido')
         return v
 
 class LicenseInfo(BaseModel):
@@ -128,6 +130,9 @@ async def activar_licencia(
                 }
             )
 
+        # Usar created_by del request o user_id del header como fallback
+        created_by_value = request.created_by or user_id
+        
         # Insertar nueva licencia
         insert_query = text("""
             INSERT INTO licencia 
@@ -143,8 +148,8 @@ async def activar_licencia(
             "id_empresa": request.company_uuid,
             "hardware_fingerprint": request.hardware_fingerprint,
             "activation_timestamp": activation_timestamp,
-            "tipo_licencia": request.tipo_licencia,
-            "created_by": request.created_by
+            "tipo_licencia": request.tipo_licencia or "trial",
+            "created_by": created_by_value
         })
         
         new_activation = result.fetchone()
@@ -317,6 +322,9 @@ async def actualizar_estatus_licencia(
                 detail={"message": "La licencia especificada no existe"}
             )
 
+        # Usar modified_by del request o user_id del header como fallback
+        modified_by_value = request.modified_by or user_id
+        
         # Actualizar estatus
         update_query = text("""
             UPDATE licencia 
@@ -330,7 +338,7 @@ async def actualizar_estatus_licencia(
         result = await db.execute(update_query, {
             "license_id": license_id,
             "nuevo_estatus": request.nuevo_estatus,
-            "modified_by": request.modified_by
+            "modified_by": modified_by_value
         })
         
         updated_license = result.fetchone()
