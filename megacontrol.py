@@ -137,7 +137,7 @@ async def activar_licencia(
         if "fk_licencias_empresa" in str(e) or "foreign key constraint" in str(e).lower():
             raise HTTPException(
                 status_code=404,
-                detail={"message": "La empresa especificada no existe en el sistema"}
+                detail={"message": "La clave de empresa no es válida"}
             )
         else:
             raise HTTPException(
