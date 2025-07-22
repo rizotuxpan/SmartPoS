@@ -49,6 +49,7 @@ class LicenseActivationResponse(BaseModel):
     message: str
     activation_id: Optional[str] = None
     activation_timestamp: Optional[datetime] = None
+    empresa_data: Optional[dict] = None  # Datos de la empresa
 
 # -------------------------
 # Router
@@ -82,13 +83,41 @@ async def activar_licencia(
         })
         
         new_activation = result.fetchone()
+        
+        # Consultar datos de la empresa para mostrar en respuesta
+        empresa_query = text("""
+            SELECT 
+                rfc,
+                razon_social,
+                nombre_comercial,
+                email_contacto,
+                telefono
+            FROM empresa 
+            WHERE id_empresa = :id_empresa
+        """)
+        
+        empresa_result = await db.execute(empresa_query, {"id_empresa": request.company_uuid})
+        empresa_data = empresa_result.fetchone()
+        
         await db.commit()
+        
+        # Preparar datos de la empresa para la respuesta
+        empresa_info = None
+        if empresa_data:
+            empresa_info = {
+                "rfc": empresa_data.rfc,
+                "razon_social": empresa_data.razon_social,
+                "nombre_comercial": empresa_data.nombre_comercial,
+                "email_contacto": empresa_data.email_contacto,
+                "telefono": empresa_data.telefono
+            }
         
         return LicenseActivationResponse(
             success=True,
             message="Licencia activada exitosamente",
             activation_id=str(new_activation.id),
-            activation_timestamp=new_activation.activation_timestamp
+            activation_timestamp=new_activation.activation_timestamp,
+            empresa_data=empresa_info
         )
         
     except Exception as e:
