@@ -107,7 +107,6 @@ async def activar_licencia(
     - **created_by**: UUID del usuario que crea la licencia
     """
     try:
-
         # Usar created_by del request o user_id del header como fallback
         created_by_value = request.created_by or user_id
         
