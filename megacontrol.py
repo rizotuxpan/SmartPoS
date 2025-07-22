@@ -16,12 +16,17 @@ import uuid as uuid_lib
 from db import AsyncSessionLocal
 
 # -------------------------
-# Dependencia SIN RLS
+# Dependencia SIN RLS pero con variables de sesión configurables
 # -------------------------
 async def get_db_simple() -> AsyncGenerator[AsyncSession, None]:
     """Sesión de BD simple sin RLS."""
     async with AsyncSessionLocal() as db:
         yield db
+
+async def configure_session_vars(db: AsyncSession, tenant_id: str, user_id: str):
+    """Configura las variables de sesión requeridas por los triggers de auditoría."""
+    await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
+    await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
 
 # -------------------------
 # Schemas
@@ -64,19 +69,6 @@ class LicenseActivationResponse(BaseModel):
     estatus: Optional[str] = None
     empresa_data: Optional[dict] = None  # Datos de la empresa
 
-class LicenseStatusUpdate(BaseModel):
-    nuevo_estatus: Literal["activa", "revocada", "expirada", "suspendida"] = Field(...)
-    modified_by: Optional[str] = Field(default=None)  # Opcional - se usará user_id del header si no se proporciona
-    
-    @validator('modified_by')
-    def validate_modified_by(cls, v):
-        if v is not None:
-            try:
-                uuid_lib.UUID(v)
-            except ValueError:
-                raise ValueError('El UUID de modified_by no tiene un formato válido')
-        return v
-
 class LicenseInfo(BaseModel):
     id_licencia: str
     hardware_fingerprint: str
@@ -109,6 +101,9 @@ async def activar_licencia(
     Permite múltiples activaciones para el mismo hardware.
     """
     try:
+        # Configurar variables de sesión requeridas por los triggers de auditoría
+        await configure_session_vars(db, tenant_id, user_id)
+        
         # Usar created_by del request o user_id del header como fallback
         created_by_value = request.created_by or user_id
         
@@ -204,6 +199,9 @@ async def consultar_activaciones(
     - **limit**: Número máximo de registros a retornar (default: 100)
     """
     try:
+        # Configurar variables de sesión
+        await configure_session_vars(db, tenant_id, user_id)
+        
         # Validar UUID de empresa
         try:
             uuid_lib.UUID(company_uuid)
@@ -276,6 +274,24 @@ async def actualizar_estatus_licencia(
     - **modified_by**: UUID del usuario que realiza la modificación (opcional, usa user_id del header si no se proporciona)
     """
     try:
+@router.patch("/license/{license_id}/status", summary="Actualizar Estatus de Licencia")
+async def actualizar_estatus_licencia(
+    license_id: str,
+    nuevo_estatus: str,
+    tenant_id: str = Header(..., alias="Tenant_ID"),
+    user_id: str = Header(..., alias="User_ID"),
+    db: AsyncSession = Depends(get_db_simple)
+):
+    """
+    Actualiza el estatus de una licencia específica.
+    
+    - **license_id**: UUID de la licencia
+    - **nuevo_estatus**: Nuevo estatus (activa, revocada, expirada, suspendida)
+    """
+    try:
+        # Configurar variables de sesión
+        await configure_session_vars(db, tenant_id, user_id)
+        
         # Validar UUID de licencia
         try:
             uuid_lib.UUID(license_id)
@@ -283,6 +299,13 @@ async def actualizar_estatus_licencia(
             raise HTTPException(
                 status_code=400,
                 detail={"message": "El UUID de licencia no tiene un formato válido"}
+            )
+            
+        # Validar estatus
+        if nuevo_estatus not in ["activa", "revocada", "expirada", "suspendida"]:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "Estatus no válido. Debe ser: activa, revocada, expirada, suspendida"}
             )
 
         # Verificar que la licencia existe
@@ -301,9 +324,6 @@ async def actualizar_estatus_licencia(
                 detail={"message": "La licencia especificada no existe"}
             )
 
-        # Usar modified_by del request o user_id del header como fallback
-        modified_by_value = request.modified_by or user_id
-        
         # Actualizar estatus
         update_query = text("""
             UPDATE licencia 
@@ -316,8 +336,8 @@ async def actualizar_estatus_licencia(
         
         result = await db.execute(update_query, {
             "license_id": license_id,
-            "nuevo_estatus": request.nuevo_estatus,
-            "modified_by": modified_by_value
+            "nuevo_estatus": nuevo_estatus,
+            "modified_by": user_id
         })
         
         updated_license = result.fetchone()
@@ -325,7 +345,7 @@ async def actualizar_estatus_licencia(
         
         return {
             "success": True,
-            "message": f"Estatus de licencia actualizado de '{license_data.estatus}' a '{request.nuevo_estatus}'",
+            "message": f"Estatus de licencia actualizado de '{license_data.estatus}' a '{nuevo_estatus}'",
             "license_id": str(updated_license.id_licencia),
             "nuevo_estatus": updated_license.estatus,
             "updated_at": updated_license.updated_at
@@ -354,6 +374,9 @@ async def consultar_licencia(
     - **license_id**: UUID de la licencia
     """
     try:
+        # Configurar variables de sesión
+        await configure_session_vars(db, tenant_id, user_id)
+        
         # Validar UUID
         try:
             uuid_lib.UUID(license_id)
