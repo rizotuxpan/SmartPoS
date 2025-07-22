@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 import uuid as uuid_lib
 
-from db import AsyncSessionLocal  # Usar directamente sin RLS
+# Importar solo lo que necesitamos del módulo db
+from db import AsyncSessionLocal
 
 # -------------------------
 # Dependencia personalizada para tablas sin RLS
