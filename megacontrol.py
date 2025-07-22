@@ -1,7 +1,7 @@
 # megacontrol.py
 # ---------------------------
 # Módulo de endpoints REST para activación de licencias.
-# Versión actualizada para nueva estructura de tabla 'licencia'
+# Versión actualizada para nueva estructura de tabla 'licencia' (singular)
 # ---------------------------
 
 from fastapi import APIRouter, Depends, HTTPException, Header
@@ -104,13 +104,15 @@ async def activar_licencia(
     - **hardware_fingerprint**: Huella única del hardware (64 caracteres)
     - **company_uuid**: UUID de la empresa
     - **tipo_licencia**: Tipo de licencia (trial, perpetua, suscripción, OEM)
-    - **created_by**: UUID del usuario que crea la licencia
+    - **created_by**: UUID del usuario que crea la licencia (opcional, usa user_id del header si no se proporciona)
+    
+    Permite múltiples activaciones para el mismo hardware.
     """
     try:
         # Usar created_by del request o user_id del header como fallback
         created_by_value = request.created_by or user_id
         
-        # Insertar nueva licencia
+        # Insertar nueva licencia usando la tabla 'licencia' actual
         insert_query = text("""
             INSERT INTO licencia 
             (id_empresa, hardware_fingerprint, activation_timestamp, tipo_licencia, estatus, created_by, modified_by)
@@ -271,7 +273,7 @@ async def actualizar_estatus_licencia(
     
     - **license_id**: UUID de la licencia
     - **nuevo_estatus**: Nuevo estatus (activa, revocada, expirada, suspendida)
-    - **modified_by**: UUID del usuario que realiza la modificación
+    - **modified_by**: UUID del usuario que realiza la modificación (opcional, usa user_id del header si no se proporciona)
     """
     try:
         # Validar UUID de licencia
