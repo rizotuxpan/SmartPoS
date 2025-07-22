@@ -107,28 +107,6 @@ async def activar_licencia(
     - **created_by**: UUID del usuario que crea la licencia
     """
     try:
-        # Verificar que no exista ya una licencia activa para este hardware
-        check_query = text("""
-            SELECT id_licencia, estatus
-            FROM licencia 
-            WHERE hardware_fingerprint = :hardware_fingerprint 
-            AND estatus = 'activa'
-            LIMIT 1
-        """)
-        
-        existing_result = await db.execute(check_query, {
-            "hardware_fingerprint": request.hardware_fingerprint
-        })
-        
-        existing_license = existing_result.fetchone()
-        if existing_license:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "message": "Ya existe una licencia activa para este hardware",
-                    "existing_license_id": str(existing_license.id_licencia)
-                }
-            )
 
         # Usar created_by del request o user_id del header como fallback
         created_by_value = request.created_by or user_id
