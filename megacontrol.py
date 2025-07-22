@@ -88,7 +88,7 @@ async def activar_licencia(
             "id_empresa": request.company_uuid,
             "hardware_fingerprint": request.hardware_fingerprint,
             "activation_timestamp": activation_timestamp,
-            "tipo_licencia": "trial",
+            "tipo_licencia": "suscripción",
             "created_by": user_id
         })
         
