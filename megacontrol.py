@@ -41,7 +41,7 @@ class LicenseActivationRequest(BaseModel):
         try:
             uuid_lib.UUID(v)
         except ValueError:
-            raise ValueError('El UUID de empresa no tiene un formato válido')
+            raise ValueError('La clave de empresa no tiene un formato válido')
         return v
 
 class LicenseActivationResponse(BaseModel):
@@ -167,7 +167,7 @@ async def consultar_activaciones(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail={"message": "El UUID de empresa no tiene un formato válido"}
+                detail={"message": "La clave de empresa no tiene un formato válido"}
             )
 
         query = text("""
@@ -238,7 +238,7 @@ async def consultar_licencia(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail={"message": "El UUID de licencia no tiene un formato válido"}
+                detail={"message": "La clave de licencia no tiene un formato válido"}
             )
 
         query = text("""
