@@ -1,12 +1,12 @@
 # megacontrol.py
 # ---------------------------
 # Módulo de endpoints REST para activación de licencias.
-# Versión actualizada para nueva estructura de tabla 'licencia' (singular)
+# Versión compatible con tabla licencia actual y variables de sesión
 # ---------------------------
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field, validator
-from typing import Optional, AsyncGenerator, Literal
+from typing import Optional, AsyncGenerator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
@@ -16,17 +16,12 @@ import uuid as uuid_lib
 from db import AsyncSessionLocal
 
 # -------------------------
-# Dependencia SIN RLS pero con variables de sesión configurables
+# Dependencia con configuración de variables de sesión
 # -------------------------
 async def get_db_simple() -> AsyncGenerator[AsyncSession, None]:
     """Sesión de BD simple sin RLS."""
     async with AsyncSessionLocal() as db:
         yield db
-
-async def configure_session_vars(db: AsyncSession, tenant_id: str, user_id: str):
-    """Configura las variables de sesión requeridas por los triggers de auditoría."""
-    await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
-    await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
 
 # -------------------------
 # Schemas
@@ -34,8 +29,6 @@ async def configure_session_vars(db: AsyncSession, tenant_id: str, user_id: str)
 class LicenseActivationRequest(BaseModel):
     hardware_fingerprint: str = Field(..., min_length=64, max_length=64)
     company_uuid: str = Field(...)
-    tipo_licencia: Optional[Literal["trial", "perpetua", "suscripción", "OEM"]] = Field(default="trial")
-    created_by: Optional[str] = Field(default=None)  # Opcional - se usará user_id del header si no se proporciona
     
     @validator('hardware_fingerprint')
     def validate_hardware_fingerprint(cls, v):
@@ -50,33 +43,13 @@ class LicenseActivationRequest(BaseModel):
         except ValueError:
             raise ValueError('El UUID de empresa no tiene un formato válido')
         return v
-        
-    @validator('created_by')
-    def validate_created_by(cls, v):
-        if v is not None:
-            try:
-                uuid_lib.UUID(v)
-            except ValueError:
-                raise ValueError('El UUID de created_by no tiene un formato válido')
-        return v
 
 class LicenseActivationResponse(BaseModel):
     success: bool
     message: str
     activation_id: Optional[str] = None
     activation_timestamp: Optional[datetime] = None
-    tipo_licencia: Optional[str] = None
-    estatus: Optional[str] = None
     empresa_data: Optional[dict] = None  # Datos de la empresa
-
-class LicenseInfo(BaseModel):
-    id_licencia: str
-    hardware_fingerprint: str
-    activation_timestamp: datetime
-    tipo_licencia: str
-    estatus: str
-    created_at: datetime
-    updated_at: datetime
 
 # -------------------------
 # Router
@@ -95,25 +68,21 @@ async def activar_licencia(
     
     - **hardware_fingerprint**: Huella única del hardware (64 caracteres)
     - **company_uuid**: UUID de la empresa
-    - **tipo_licencia**: Tipo de licencia (trial, perpetua, suscripción, OEM)
-    - **created_by**: UUID del usuario que crea la licencia (opcional, usa user_id del header si no se proporciona)
     
     Permite múltiples activaciones para el mismo hardware.
     """
     try:
-        # Configurar variables de sesión requeridas por los triggers de auditoría
-        await configure_session_vars(db, tenant_id, user_id)
+        # Configurar variables de sesión requeridas por los triggers
+        await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
+        await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
         
-        # Usar created_by del request o user_id del header como fallback
-        created_by_value = request.created_by or user_id
-        
-        # Insertar nueva licencia usando la tabla 'licencia' actual
+        # Insertar nueva licencia usando estructura actual
         insert_query = text("""
             INSERT INTO licencia 
             (id_empresa, hardware_fingerprint, activation_timestamp, tipo_licencia, estatus, created_by, modified_by)
             VALUES 
             (:id_empresa, :hardware_fingerprint, :activation_timestamp, :tipo_licencia, 'activa', :created_by, :created_by)
-            RETURNING id_licencia, activation_timestamp, tipo_licencia, estatus
+            RETURNING id_licencia, activation_timestamp
         """)
         
         activation_timestamp = datetime.now(timezone.utc)
@@ -122,8 +91,8 @@ async def activar_licencia(
             "id_empresa": request.company_uuid,
             "hardware_fingerprint": request.hardware_fingerprint,
             "activation_timestamp": activation_timestamp,
-            "tipo_licencia": request.tipo_licencia or "trial",
-            "created_by": created_by_value
+            "tipo_licencia": "trial",
+            "created_by": user_id
         })
         
         new_activation = result.fetchone()
@@ -161,14 +130,9 @@ async def activar_licencia(
             message="Licencia activada exitosamente",
             activation_id=str(new_activation.id_licencia),
             activation_timestamp=new_activation.activation_timestamp,
-            tipo_licencia=new_activation.tipo_licencia,
-            estatus=new_activation.estatus,
             empresa_data=empresa_info
         )
         
-    except HTTPException:
-        await db.rollback()
-        raise
     except Exception as e:
         await db.rollback()
         
@@ -200,7 +164,8 @@ async def consultar_activaciones(
     """
     try:
         # Configurar variables de sesión
-        await configure_session_vars(db, tenant_id, user_id)
+        await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
+        await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
         
         # Validar UUID de empresa
         try:
@@ -256,172 +221,4 @@ async def consultar_activaciones(
         raise HTTPException(
             status_code=500,
             detail={"message": f"Error al consultar activaciones: {str(e)}"}
-        )
-
-@router.patch("/license/{license_id}/status", summary="Actualizar Estatus de Licencia")
-async def actualizar_estatus_licencia(
-    license_id: str,
-    request: LicenseStatusUpdate,
-    tenant_id: str = Header(..., alias="Tenant_ID"),
-    user_id: str = Header(..., alias="User_ID"),
-    db: AsyncSession = Depends(get_db_simple)
-):
-    """
-    Actualiza el estatus de una licencia específica.
-    
-    - **license_id**: UUID de la licencia
-    - **nuevo_estatus**: Nuevo estatus (activa, revocada, expirada, suspendida)
-    - **modified_by**: UUID del usuario que realiza la modificación (opcional, usa user_id del header si no se proporciona)
-    """
-    try:
-@router.patch("/license/{license_id}/status", summary="Actualizar Estatus de Licencia")
-async def actualizar_estatus_licencia(
-    license_id: str,
-    nuevo_estatus: str,
-    tenant_id: str = Header(..., alias="Tenant_ID"),
-    user_id: str = Header(..., alias="User_ID"),
-    db: AsyncSession = Depends(get_db_simple)
-):
-    """
-    Actualiza el estatus de una licencia específica.
-    
-    - **license_id**: UUID de la licencia
-    - **nuevo_estatus**: Nuevo estatus (activa, revocada, expirada, suspendida)
-    """
-    try:
-        # Configurar variables de sesión
-        await configure_session_vars(db, tenant_id, user_id)
-        
-        # Validar UUID de licencia
-        try:
-            uuid_lib.UUID(license_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail={"message": "El UUID de licencia no tiene un formato válido"}
-            )
-            
-        # Validar estatus
-        if nuevo_estatus not in ["activa", "revocada", "expirada", "suspendida"]:
-            raise HTTPException(
-                status_code=400,
-                detail={"message": "Estatus no válido. Debe ser: activa, revocada, expirada, suspendida"}
-            )
-
-        # Verificar que la licencia existe
-        check_query = text("""
-            SELECT id_licencia, estatus 
-            FROM licencia 
-            WHERE id_licencia = :license_id
-        """)
-        
-        existing = await db.execute(check_query, {"license_id": license_id})
-        license_data = existing.fetchone()
-        
-        if not license_data:
-            raise HTTPException(
-                status_code=404,
-                detail={"message": "La licencia especificada no existe"}
-            )
-
-        # Actualizar estatus
-        update_query = text("""
-            UPDATE licencia 
-            SET estatus = :nuevo_estatus,
-                modified_by = :modified_by,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id_licencia = :license_id
-            RETURNING id_licencia, estatus, updated_at
-        """)
-        
-        result = await db.execute(update_query, {
-            "license_id": license_id,
-            "nuevo_estatus": nuevo_estatus,
-            "modified_by": user_id
-        })
-        
-        updated_license = result.fetchone()
-        await db.commit()
-        
-        return {
-            "success": True,
-            "message": f"Estatus de licencia actualizado de '{license_data.estatus}' a '{nuevo_estatus}'",
-            "license_id": str(updated_license.id_licencia),
-            "nuevo_estatus": updated_license.estatus,
-            "updated_at": updated_license.updated_at
-        }
-        
-    except HTTPException:
-        await db.rollback()
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail={"message": f"Error al actualizar estatus: {str(e)}"}
-        )
-
-@router.get("/license/{license_id}", response_model=LicenseInfo, summary="Consultar Licencia")
-async def consultar_licencia(
-    license_id: str,
-    tenant_id: str = Header(..., alias="Tenant_ID"),
-    user_id: str = Header(..., alias="User_ID"),
-    db: AsyncSession = Depends(get_db_simple)
-):
-    """
-    Consulta información detallada de una licencia específica.
-    
-    - **license_id**: UUID de la licencia
-    """
-    try:
-        # Configurar variables de sesión
-        await configure_session_vars(db, tenant_id, user_id)
-        
-        # Validar UUID
-        try:
-            uuid_lib.UUID(license_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail={"message": "El UUID de licencia no tiene un formato válido"}
-            )
-
-        query = text("""
-            SELECT 
-                id_licencia,
-                hardware_fingerprint,
-                activation_timestamp,
-                tipo_licencia,
-                estatus,
-                created_at,
-                updated_at
-            FROM licencia
-            WHERE id_licencia = :license_id
-        """)
-        
-        result = await db.execute(query, {"license_id": license_id})
-        license_data = result.fetchone()
-        
-        if not license_data:
-            raise HTTPException(
-                status_code=404,
-                detail={"message": "La licencia especificada no existe"}
-            )
-        
-        return LicenseInfo(
-            id_licencia=str(license_data.id_licencia),
-            hardware_fingerprint=license_data.hardware_fingerprint,
-            activation_timestamp=license_data.activation_timestamp,
-            tipo_licencia=license_data.tipo_licencia,
-            estatus=license_data.estatus,
-            created_at=license_data.created_at,
-            updated_at=license_data.updated_at
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"message": f"Error al consultar licencia: {str(e)}"}
         )
