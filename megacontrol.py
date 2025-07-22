@@ -2,6 +2,7 @@
 # ---------------------------
 # Módulo de endpoints REST para activación de licencias.
 # Usa FastAPI, SQLAlchemy Async y Pydantic para validación.
+# La tabla licencias NO tiene RLS activado.
 # ---------------------------
 
 from fastapi import APIRouter, Depends, HTTPException, Header
@@ -12,7 +13,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
 import uuid as uuid_lib
 
-from db import get_async_db
+from db import AsyncSessionLocal  # Usar directamente sin RLS
+
+# -------------------------
+# Dependencia personalizada para tablas sin RLS
+# -------------------------
+async def get_db_no_rls():
+    """
+    Dependencia para obtener sesión de BD sin configurar RLS.
+    Para tablas que no tienen Row Level Security habilitado.
+    """
+    async with AsyncSessionLocal() as db:
+        yield db
 
 # -------------------------
 # Schemas Pydantic
