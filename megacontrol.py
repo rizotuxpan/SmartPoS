@@ -132,6 +132,160 @@ async def activar_licencia(
             activation_timestamp=new_activation.activation_timestamp,
             empresa_data=empresa_info
         )
+
+@router.patch("/license/{license_id}/status", summary="Actualizar Estatus de Licencia")
+async def actualizar_estatus_licencia(
+    license_id: str,
+    nuevo_estatus: str,
+    tenant_id: str = Header(..., alias="Tenant_ID"),
+    user_id: str = Header(..., alias="User_ID"),
+    db: AsyncSession = Depends(get_db_simple)
+):
+    """
+    Actualiza el estatus de una licencia específica.
+    
+    - **license_id**: UUID de la licencia
+    - **nuevo_estatus**: Nuevo estatus (activa, revocada, expirada, suspendida)
+    """
+    try:
+        # Configurar variables de sesión
+        await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
+        await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
+        
+        # Validar UUID de licencia
+        try:
+            uuid_lib.UUID(license_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "El UUID de licencia no tiene un formato válido"}
+            )
+            
+        # Validar estatus
+        if nuevo_estatus not in ["activa", "revocada", "expirada", "suspendida"]:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "Estatus no válido. Debe ser: activa, revocada, expirada, suspendida"}
+            )
+
+        # Verificar que la licencia existe
+        check_query = text("""
+            SELECT id_licencia, estatus 
+            FROM licencia 
+            WHERE id_licencia = :license_id
+        """)
+        
+        existing = await db.execute(check_query, {"license_id": license_id})
+        license_data = existing.fetchone()
+        
+        if not license_data:
+            raise HTTPException(
+                status_code=404,
+                detail={"message": "La licencia especificada no existe"}
+            )
+
+        # Actualizar estatus
+        update_query = text("""
+            UPDATE licencia 
+            SET estatus = :nuevo_estatus,
+                modified_by = :modified_by,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id_licencia = :license_id
+            RETURNING id_licencia, estatus, updated_at
+        """)
+        
+        result = await db.execute(update_query, {
+            "license_id": license_id,
+            "nuevo_estatus": nuevo_estatus,
+            "modified_by": user_id
+        })
+        
+        updated_license = result.fetchone()
+        await db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Estatus de licencia actualizado de '{license_data.estatus}' a '{nuevo_estatus}'",
+            "license_id": str(updated_license.id_licencia),
+            "nuevo_estatus": updated_license.estatus,
+            "updated_at": updated_license.updated_at
+        }
+        
+    except HTTPException:
+        await db.rollback()
+        raise
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Error al actualizar estatus: {str(e)}"}
+        )
+
+@router.get("/license/{license_id}", summary="Consultar Licencia")
+async def consultar_licencia(
+    license_id: str,
+    tenant_id: str = Header(..., alias="Tenant_ID"),
+    user_id: str = Header(..., alias="User_ID"),
+    db: AsyncSession = Depends(get_db_simple)
+):
+    """
+    Consulta información detallada de una licencia específica.
+    
+    - **license_id**: UUID de la licencia
+    """
+    try:
+        # Configurar variables de sesión
+        await db.execute(text("SET app.current_tenant = :tenant_id"), {"tenant_id": tenant_id})
+        await db.execute(text("SET app.usuario = :user_id"), {"user_id": user_id})
+        
+        # Validar UUID
+        try:
+            uuid_lib.UUID(license_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail={"message": "El UUID de licencia no tiene un formato válido"}
+            )
+
+        query = text("""
+            SELECT 
+                id_licencia,
+                hardware_fingerprint,
+                activation_timestamp,
+                tipo_licencia,
+                estatus,
+                created_at,
+                updated_at
+            FROM licencia
+            WHERE id_licencia = :license_id
+        """)
+        
+        result = await db.execute(query, {"license_id": license_id})
+        license_data = result.fetchone()
+        
+        if not license_data:
+            raise HTTPException(
+                status_code=404,
+                detail={"message": "La licencia especificada no existe"}
+            )
+        
+        return {
+            "id_licencia": str(license_data.id_licencia),
+            "hardware_fingerprint": license_data.hardware_fingerprint,
+            "activation_timestamp": license_data.activation_timestamp,
+            "tipo_licencia": license_data.tipo_licencia,
+            "estatus": license_data.estatus,
+            "created_at": license_data.created_at,
+            "updated_at": license_data.updated_at
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"Error al consultar licencia: {str(e)}"}
+        )
         
     except Exception as e:
         await db.rollback()
