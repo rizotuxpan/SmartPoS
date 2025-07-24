@@ -314,21 +314,7 @@ async def actualizar_usuario(
         usuario.apellido = entrada.apellido
     if entrada.telefono is not None:
         usuario.telefono = entrada.telefono
-    if entrada.email is not None:
-        # Verificar email duplicado (solo si se proporciona)
-        email_check = await db.execute(
-            select(Usuario).where(
-                Usuario.email == entrada.email,
-                Usuario.id_empresa == ctx["tenant_id"],
-                Usuario.id_usuario != id_usuario,
-                Usuario.id_estado != await get_estado_id_por_clave("del", db)
-            )
-        )
-        if email_check.scalar_one_or_none():
-            raise HTTPException(
-                status_code=409, 
-                detail="Ya existe otro usuario con ese email en la empresa"
-            )
+    if entrada.email is not None:       
         usuario.email = entrada.email
     
     if entrada.usuario is not None:
@@ -338,7 +324,7 @@ async def actualizar_usuario(
                 Usuario.usuario == entrada.usuario,
                 Usuario.id_empresa == ctx["tenant_id"],
                 Usuario.id_usuario != id_usuario,
-                Usuario.id_estado != await get_estado_id_por_clave("del", db)
+                Usuario.id_estado == await get_estado_id_por_clave("act", db)
             )
         )
         if usuario_check.scalar_one_or_none():
