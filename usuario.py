@@ -45,6 +45,7 @@ class Usuario(Base):
     id_rol = Column(PG_UUID(as_uuid=True), nullable=True)
     nombre = Column(String(80), nullable=False)
     apellido = Column(String(80), nullable=False)
+    telefono = Column(String(50), nullable=True) 
     email = Column(CITEXT, nullable=True)  # ✅ Ahora es NULL según DDL
     password_hash = Column(String, nullable=False)
     usuario = Column(String(20), nullable=False)  # ✅ Ahora es NOT NULL según DDL
@@ -71,6 +72,7 @@ class UsuarioBase(BaseModel):
     """
     nombre: str
     apellido: str
+    telefono: Optional[str] = None  # ✅ Teléfono es opcional según DDL
     email: Optional[EmailStr] = None  # ✅ Email ahora es opcional según DDL
     usuario: str  # ✅ Usuario ahora es obligatorio según DDL
     id_rol: Optional[UUID] = None
@@ -86,6 +88,7 @@ class UsuarioUpdate(BaseModel):
     """
     nombre: Optional[str] = None
     apellido: Optional[str] = None
+    telefono: Optional[str] = None  # Teléfono es opcional
     email: Optional[EmailStr] = None
     usuario: Optional[str] = None
     id_rol: Optional[UUID] = None
@@ -138,6 +141,7 @@ router = APIRouter()
 async def listar_usuarios(
     nombre: Optional[str] = Query(None),        # Filtro por nombre (ilike)
     apellido: Optional[str] = Query(None),      # Filtro por apellido (ilike)
+    telefono: Optional[str] = Query(None),      # Filtro por teléfono (ilike)
     email: Optional[str] = Query(None),         # Filtro por email (ilike)
     usuario: Optional[str] = Query(None),       # Filtro por usuario (ilike)
     skip: int = 0,                              # Paginación: offset
@@ -156,6 +160,8 @@ async def listar_usuarios(
         stmt = stmt.where(Usuario.nombre.ilike(f"%{nombre}%"))
     if apellido:
         stmt = stmt.where(Usuario.apellido.ilike(f"%{apellido}%"))
+    if telefono:
+        stmt = stmt.where(Usuario.telefono.ilike(f"%{telefono}%"))
     if email:
         stmt = stmt.where(Usuario.email.ilike(f"%{email}%"))
     if usuario:
@@ -238,6 +244,7 @@ async def crear_usuario(
     nuevo = Usuario(
         nombre=entrada.nombre,
         apellido=entrada.apellido,
+        telefono=entrada.telefono,  # ✅ Teléfono es opcional
         email=entrada.email,
         usuario=entrada.usuario,
         password_hash=password_hash,
@@ -305,6 +312,8 @@ async def actualizar_usuario(
         usuario.nombre = entrada.nombre
     if entrada.apellido is not None:
         usuario.apellido = entrada.apellido
+    if entrada.telefono is not None:
+        usuario.telefono = entrada.telefono
     if entrada.email is not None:
         # Verificar email duplicado (solo si se proporciona)
         email_check = await db.execute(
