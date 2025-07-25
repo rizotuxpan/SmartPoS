@@ -266,12 +266,7 @@ async def crear_usuario(
     
     except Exception as e:
         await db.rollback()
-        if "uq_usuario_empresa_email_ci" in str(e):
-            raise HTTPException(
-                status_code=409, 
-                detail="Ya existe un usuario con ese email en la empresa"
-            )
-        elif "uq_usuario_empresa_usuario_ci" in str(e):  # ✅ Constraint que ahora SÍ existe
+        if "uq_usuario_empresa_usuario_ci" in str(e):  # ✅ Constraint que ahora SÍ existe
             raise HTTPException(
                 status_code=409, 
                 detail="Ya existe un usuario con ese nombre de usuario en la empresa"
