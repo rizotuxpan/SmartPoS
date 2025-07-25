@@ -563,3 +563,39 @@ async def buscar_usuario_por_email(
         "exists": True,
         "data": UsuarioRead.model_validate(usuario_encontrado)
     }
+
+@router.get("/rol/{id_rol}", response_model=dict)
+async def listar_usuarios_por_rol(
+    id_rol: UUID,
+    skip: int = 0,                              # Paginación: offset
+    limit: int = 100,                           # Paginación: máximo de registros
+    db: AsyncSession = Depends(get_async_db)    # Sesión RLS inyectada
+):
+    """
+    Lista usuarios que pertenecen a un rol específico.
+    Solo incluye usuarios en estado "activo" con paginación.
+    """
+    # 1) Obtener UUID del estado "activo"
+    estado_activo_id = await get_estado_id_por_clave("act", db)
+
+    # 2) Construir consulta filtrada por id_rol y estado activo
+    stmt = select(Usuario).where(
+        Usuario.id_rol == id_rol,
+        Usuario.id_estado == estado_activo_id
+    )
+
+    # 3) Contar total para paginación
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total = await db.scalar(total_stmt)
+
+    # 4) Ejecutar consulta paginada
+    result = await db.execute(stmt.offset(skip).limit(limit))
+    data = result.scalars().all()
+
+    # 5) Serializar y devolver
+    return {
+        "success": True,
+        "total_count": total,
+        "id_rol": id_rol,
+        "data": [UsuarioRead.model_validate(u) for u in data]
+    }
