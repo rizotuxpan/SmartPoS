@@ -34,21 +34,21 @@ app = FastAPI(
     title="MEGAVENTA 2025"            # Nombre de la API que aparecerá en la documentación Swagger
 )
 
-@app.get("/megacontrol/latest", response_class=PlainTextResponse)
+@app.get("/megacontrol/latest")
 async def get_latest_version():
     """
     Devuelve la versión actual del sistema como string plano
     """
     return "2025.1.1"
 
-@app.get("/megalicencias/latest", response_class=PlainTextResponse)
+@app.get("/megalicencias/latest")
 async def get_latest_version():
     """
     Devuelve la versión actual del sistema como string plano
     """
     return "2025.1.2"
 
-@app.get("/megaventa/latest", response_class=PlainTextResponse)
+@app.get("/megaventa/latest")
 async def get_latest_version():
     """
     Devuelve la versión actual del sistema como string plano
