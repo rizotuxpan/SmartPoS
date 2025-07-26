@@ -31,8 +31,29 @@ from megacontrol import router as megacontrol_router
 # Inicialización de la aplicación
 # -------------------------------
 app = FastAPI(
-    title="Mega Venta edición 2025"            # Nombre de la API que aparecerá en la documentación Swagger
+    title="MEGAVENTA 2025"            # Nombre de la API que aparecerá en la documentación Swagger
 )
+
+@app.get("/megacontrol/latest", response_class=PlainTextResponse)
+async def get_latest_version():
+    """
+    Devuelve la versión actual del sistema como string plano
+    """
+    return "2025.1.1"
+
+@app.get("/megalicencias/latest", response_class=PlainTextResponse)
+async def get_latest_version():
+    """
+    Devuelve la versión actual del sistema como string plano
+    """
+    return "2025.1.2"
+
+@app.get("/megaventa/latest", response_class=PlainTextResponse)
+async def get_latest_version():
+    """
+    Devuelve la versión actual del sistema como string plano
+    """
+    return "2025.1.3"
 
 # -------------------------------------------
 # Inclusión de routers (módulos de endpoints)
@@ -164,4 +185,4 @@ app.include_router(
 @app.get("/")
 async def root():
     """Retorna un mensaje simple para verificar que el servicio esté en línea"""
-    return {"ID": "MEGAVENTAS 2025"}
+    return {"Estatus": "Online"}
