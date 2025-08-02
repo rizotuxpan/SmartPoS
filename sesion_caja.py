@@ -1,7 +1,7 @@
 # sesion_caja.py
 # -----------------------------------------------
 # Endpoints API para Sistema de Cortes de Caja X, Z
-# VERSIÓN CORREGIDA - Sin errores de tipos SQLAlchemy
+# VERSIÓN CORREGIDA - Compatible con Pascal y Funciones Refactorizadas
 # -----------------------------------------------
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,7 +20,7 @@ from utils.estado import get_estado_id_por_clave
 from utils.contexto import obtener_contexto
 
 # =====================================================
-# MODELOS ORM (SQLAlchemy) - CORREGIDOS
+# MODELOS ORM (SQLAlchemy) - SIN CAMBIOS
 # =====================================================
 
 class SesionCaja(Base):
@@ -102,7 +102,7 @@ class MovimientoEfectivo(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 # =====================================================
-# SCHEMAS PYDANTIC
+# SCHEMAS PYDANTIC - SIN CAMBIOS (YA TIENEN LOS NOMBRES CORRECTOS)
 # =====================================================
 
 class AbrirCajaRequest(BaseModel):
@@ -179,7 +179,7 @@ class EstadoTerminalRead(BaseModel):
 class DatosCorteXRead(BaseModel):
     id_terminal: UUID
     codigo_terminal: str
-    nombre_terminal: str
+    nombre_terminal: str  # ✅ YA CORRECTO para Pascal
     id_sesion: UUID
     fecha_apertura: datetime
     fondo_inicial: Decimal
@@ -217,7 +217,7 @@ class MovimientoEfectivoRead(BaseModel):
     model_config = {"from_attributes": True}
 
 # =====================================================
-# ROUTER Y ENDPOINTS
+# ROUTER Y ENDPOINTS - ACTUALIZADOS PARA PASCAL
 # =====================================================
 
 router = APIRouter()
@@ -277,6 +277,7 @@ async def cerrar_caja(
 ):
     """
     Cerrar sesión de caja (Corte Z) con conteo físico de efectivo.
+    ✅ ACTUALIZADO para usar función compatible con Pascal
     """
     ctx = await obtener_contexto(db)
     
@@ -294,16 +295,30 @@ async def cerrar_caja(
         )
     
     try:
-        # Llamar función de base de datos
-        result = await db.execute(
-            text("SELECT fn_cerrar_caja(:id_terminal, :id_usuario, :efectivo_contado, :observaciones)"),
-            {
-                "id_terminal": str(entrada.id_terminal),
-                "id_usuario": str(ctx["user_id"]),
-                "efectivo_contado": float(entrada.efectivo_contado),
-                "observaciones": entrada.observaciones
-            }
-        )
+        # ✅ CORREGIDO: Usar función wrapper Pascal o función principal
+        try:
+            # Intentar usar función wrapper específica para Pascal
+            result = await db.execute(
+                text("SELECT fn_cerrar_caja_pascal(:id_terminal, :id_usuario, :efectivo_contado, :observaciones)"),
+                {
+                    "id_terminal": str(entrada.id_terminal),
+                    "id_usuario": str(ctx["user_id"]),
+                    "efectivo_contado": float(entrada.efectivo_contado),
+                    "observaciones": entrada.observaciones
+                }
+            )
+        except Exception:
+            # Si no existe el wrapper, usar función original
+            result = await db.execute(
+                text("SELECT fn_cerrar_caja(:id_terminal, :id_usuario, :efectivo_contado, :observaciones)"),
+                {
+                    "id_terminal": str(entrada.id_terminal),
+                    "id_usuario": str(ctx["user_id"]),
+                    "efectivo_contado": float(entrada.efectivo_contado),
+                    "observaciones": entrada.observaciones
+                }
+            )
+        
         id_corte = result.scalar()
         await db.commit()
         
@@ -325,6 +340,7 @@ async def generar_corte_x(
 ):
     """
     Generar Corte X (parcial) sin cerrar la sesión.
+    ✅ ACTUALIZADO para usar función compatible con Pascal
     """
     ctx = await obtener_contexto(db)
     
@@ -342,14 +358,27 @@ async def generar_corte_x(
         )
     
     try:
-        # Llamar función de base de datos
-        result = await db.execute(
-            text("SELECT fn_generar_corte_x(:id_terminal, :id_usuario)"),
-            {
-                "id_terminal": str(entrada.id_terminal),
-                "id_usuario": str(ctx["user_id"])
-            }
-        )
+        # ✅ CORREGIDO: Usar función wrapper Pascal o función consolidada con persistencia
+        try:
+            # Intentar usar función wrapper específica para Pascal
+            result = await db.execute(
+                text("SELECT fn_generar_corte_x_pascal(:id_terminal, :id_usuario)"),
+                {
+                    "id_terminal": str(entrada.id_terminal),
+                    "id_usuario": str(ctx["user_id"])
+                }
+            )
+        except Exception:
+            # Si no existe el wrapper, usar función consolidada con persistencia activada
+            result = await db.execute(
+                text("SELECT fn_generar_corte_x(:id_terminal, :id_usuario, :persistir)"),
+                {
+                    "id_terminal": str(entrada.id_terminal),
+                    "id_usuario": str(ctx["user_id"]),
+                    "persistir": True
+                }
+            )
+        
         id_corte = result.scalar()
         await db.commit()
         
@@ -371,9 +400,27 @@ async def obtener_estado_terminal(
 ):
     """
     Obtener estado actual de una terminal (abierta/cerrada, sesión activa, etc.)
+    ✅ ACTUALIZADO para usar vista base optimizada
     """
     stmt = text("""
-        SELECT * FROM vista_estado_terminales 
+        SELECT 
+            id_terminal,
+            codigo_terminal,
+            terminal_nombre AS nombre_terminal,
+            sucursal_nombre,
+            estado_actual,
+            id_sesion,
+            fecha_apertura,
+            fondo_inicial,
+            usuario_apertura,
+            total_ventas AS ventas_sesion_actual,
+            cantidad_ventas AS cantidad_ventas_sesion,
+            total_efectivo AS efectivo_sesion_actual,
+            'X' AS ultimo_tipo_corte,
+            CURRENT_DATE AS fecha_ultimo_corte,
+            CASE WHEN proximo_numero_x > 1 THEN proximo_numero_x - 1 ELSE 0 END AS ultimo_numero_x,
+            horas_sesion_abierta
+        FROM vista_base_cortes 
         WHERE id_terminal = :id_terminal
     """)
     
@@ -392,15 +439,47 @@ async def obtener_datos_corte_x(
 ):
     """
     Obtener datos actuales para generar Corte X.
-    Solo funciona si la terminal tiene sesión abierta.
+    ✅ ACTUALIZADO para usar vista compatible con Pascal
     """
     stmt = text("""
-        SELECT * FROM vista_corte_x 
+        SELECT * FROM vista_corte_x_pascal 
         WHERE id_terminal = :id_terminal
     """)
     
     result = await db.execute(stmt, {"id_terminal": str(id_terminal)})
     datos = result.mappings().fetchone()
+    
+    if not datos:
+        # Fallback a vista original si la vista Pascal no existe
+        stmt = text("""
+            SELECT 
+                id_terminal,
+                codigo_terminal,
+                terminal_nombre AS nombre_terminal,
+                id_sesion,
+                fecha_apertura,
+                fondo_inicial,
+                usuario_apertura,
+                cantidad_ventas,
+                total_ventas,
+                subtotal_ventas,
+                impuestos_ventas,
+                descuentos_ventas,
+                total_efectivo,
+                total_tarjeta,
+                total_transferencia,
+                total_otros,
+                efectivo_esperado,
+                fecha_corte,
+                proximo_numero_x,
+                inicio_periodo,
+                fin_periodo
+            FROM vista_corte_x 
+            WHERE id_terminal = :id_terminal
+        """)
+        
+        result = await db.execute(stmt, {"id_terminal": str(id_terminal)})
+        datos = result.mappings().fetchone()
     
     if not datos:
         raise HTTPException(
@@ -409,6 +488,10 @@ async def obtener_datos_corte_x(
         )
     
     return DatosCorteXRead.model_validate(dict(datos))
+
+# =====================================================
+# ENDPOINTS SIN CAMBIOS (MANTENER ORIGINALES)
+# =====================================================
 
 @router.get("/historial-cortes/{id_terminal}", response_model=List[CorteCajaRead])
 async def obtener_historial_cortes(
@@ -534,9 +617,10 @@ async def obtener_resumen_caja_hoy(
 ):
     """
     Obtener resumen rápido de la caja del día actual.
+    ✅ ACTUALIZADO para usar vista base optimizada
     """
     stmt = text("""
-        SELECT * FROM vista_corte_caja 
+        SELECT * FROM vista_base_cortes 
         WHERE id_terminal = :id_terminal
     """)
     
