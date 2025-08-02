@@ -6,26 +6,27 @@
 from fastapi import FastAPI                              # Importa la clase principal de FastAPI
 
 # Importa routers definidos en sus respectivos módulos
-from marca         import router as marcas_router         # marca.py
-from forma_pago    import router as formas_pago_router    # forma_pago.py
-from categoria     import router as categorias_router     # categoria.py
-from umedida       import router as umedida_router        # umedida.py
-from subcategoria  import router as subcategoria_router   # subcategoria.py
-from empresa       import router as empresa_router        # empresa.py
-from sucursal      import router as sucursal_router       # sucursal.py
-from almacen       import router as almacen_router        # almacen.py
-from cliente       import router as cliente_router        # cliente.py
-from producto      import router as producto_router       # producto.py
-from terminal      import router as terminal_router       # terminal.py
-from eml           import router as entidades_router      # eml.py
-from regimenfiscal import router as regimenfiscal_router  # regimenfiscal.py
-from inventario import router as inventario_router
-from venta import router as venta_router
-from venta_detalle import router as venta_detalle_router
-from pago import router as pago_router
+from marca             import router as marcas_router         # marca.py
+from forma_pago        import router as formas_pago_router    # forma_pago.py
+from categoria         import router as categorias_router     # categoria.py
+from umedida           import router as umedida_router        # umedida.py
+from subcategoria      import router as subcategoria_router   # subcategoria.py
+from empresa           import router as empresa_router        # empresa.py
+from sucursal          import router as sucursal_router       # sucursal.py
+from almacen           import router as almacen_router        # almacen.py
+from cliente           import router as cliente_router        # cliente.py
+from producto          import router as producto_router       # producto.py
+from terminal          import router as terminal_router       # terminal.py
+from eml               import router as entidades_router      # eml.py
+from regimenfiscal     import router as regimenfiscal_router  # regimenfiscal.py
+from inventario        import router as inventario_router
+from venta             import router as venta_router
+from venta_detalle     import router as venta_detalle_router
+from pago              import router as pago_router
 from producto_variante import router as producto_variante_router
-from usuario import router as usuario_router
-from megacontrol import router as megacontrol_router
+from usuario           import router as usuario_router
+from megacontrol       import router as megacontrol_router
+from sesion_caja       import router as sesion_caja_router
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -177,6 +178,12 @@ app.include_router(
     megacontrol_router,
     prefix="/megacontrol",
     tags=["Activación de Licencias"]
+)
+
+app.include_router(
+    sesion_caja_router,
+    prefix="/sesion-caja",
+    tags=["Sesión de Caja y Cortes X, Z"]
 )
 
 # ---------------------------
