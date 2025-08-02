@@ -1,7 +1,7 @@
 # sesion_caja.py
 # -----------------------------------------------
 # Endpoints API para Sistema de Cortes de Caja X, Z
-# Manejo de sesiones, apertura, cierre y cortes
+# VERSIÓN CORREGIDA - Sin errores de tipos SQLAlchemy
 # -----------------------------------------------
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -10,7 +10,7 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, date
 from decimal import Decimal
-from sqlalchemy import Column, String, Text, DateTime, Numeric, Boolean, func, select, text
+from sqlalchemy import Column, String, Text, DateTime, Numeric, Boolean, Integer, func, select, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,7 @@ from utils.estado import get_estado_id_por_clave
 from utils.contexto import obtener_contexto
 
 # =====================================================
-# MODELOS ORM (SQLAlchemy)
+# MODELOS ORM (SQLAlchemy) - CORREGIDOS
 # =====================================================
 
 class SesionCaja(Base):
@@ -35,12 +35,12 @@ class SesionCaja(Base):
     fecha_apertura = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     fecha_cierre = Column(DateTime(timezone=True), nullable=True)
     
-    fondo_inicial = Column(Numeric(14, 2), nullable=False, server_default="0.00")
+    fondo_inicial = Column(Numeric(14, 2), nullable=False, server_default=text("0.00"))
     efectivo_sistema = Column(Numeric(14, 2), nullable=True)
     efectivo_contado = Column(Numeric(14, 2), nullable=True)
     diferencia_efectivo = Column(Numeric(14, 2), nullable=True)
     
-    estado_sesion = Column(String(20), nullable=False, server_default="'ABIERTA'")
+    estado_sesion = Column(String(20), nullable=False, server_default=text("'ABIERTA'"))
     observaciones_cierre = Column(Text, nullable=True)
     
     created_by = Column(PG_UUID(as_uuid=True), nullable=False)
@@ -58,15 +58,15 @@ class CorteCaja(Base):
     id_usuario = Column(PG_UUID(as_uuid=True), nullable=False)
     
     tipo_corte = Column(String(1), nullable=False)  # 'X' o 'Z'
-    numero_corte_x = Column(func.integer, nullable=False, server_default="0")
+    numero_corte_x = Column(Integer, nullable=False, server_default=text("0"))
     fecha_corte = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     
-    total_ventas = Column(Numeric(14, 2), nullable=False, server_default="0.00")
-    cantidad_ventas = Column(func.integer, nullable=False, server_default="0")
-    total_efectivo = Column(Numeric(14, 2), nullable=False, server_default="0.00")
-    total_tarjeta = Column(Numeric(14, 2), nullable=False, server_default="0.00")
-    total_transferencia = Column(Numeric(14, 2), nullable=False, server_default="0.00")
-    total_otros_pagos = Column(Numeric(14, 2), nullable=False, server_default="0.00")
+    total_ventas = Column(Numeric(14, 2), nullable=False, server_default=text("0.00"))
+    cantidad_ventas = Column(Integer, nullable=False, server_default=text("0"))
+    total_efectivo = Column(Numeric(14, 2), nullable=False, server_default=text("0.00"))
+    total_tarjeta = Column(Numeric(14, 2), nullable=False, server_default=text("0.00"))
+    total_transferencia = Column(Numeric(14, 2), nullable=False, server_default=text("0.00"))
+    total_otros_pagos = Column(Numeric(14, 2), nullable=False, server_default=text("0.00"))
     
     # Solo para Corte Z
     fondo_inicial = Column(Numeric(14, 2), nullable=True)
@@ -75,7 +75,7 @@ class CorteCaja(Base):
     diferencia_efectivo = Column(Numeric(14, 2), nullable=True)
     
     observaciones = Column(Text, nullable=True)
-    impreso = Column(Boolean, server_default="false")
+    impreso = Column(Boolean, server_default=text("false"))
     
     created_by = Column(PG_UUID(as_uuid=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
