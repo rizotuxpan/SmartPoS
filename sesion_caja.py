@@ -270,16 +270,16 @@ async def abrir_caja(
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Error al abrir caja: {str(e)}")
 
+# En sesion_caja.py
 @router.post("/cerrar-caja", response_model=dict)
 async def cerrar_caja(
     entrada: CerrarCajaRequest,
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Cerrar sesión de caja (Corte Z) con conteo físico de efectivo.
-    ✅ ACTUALIZADO para usar función compatible con Pascal
-    """
     ctx = await obtener_contexto(db)
+    
+    # ✅ CONFIGURAR CONTEXTO RLS EXPLÍCITAMENTE
+    await db.execute(text(f"SET app.current_tenant = '{ctx['tenant_id']}'"))
     
     # Verificar que hay sesión abierta
     stmt = select(SesionCaja).where(
@@ -295,29 +295,16 @@ async def cerrar_caja(
         )
     
     try:
-        # ✅ CORREGIDO: Usar función wrapper Pascal o función principal
-        try:
-            # Intentar usar función wrapper específica para Pascal
-            result = await db.execute(
-                text("SELECT fn_cerrar_caja_pascal(:id_terminal, :id_usuario, :efectivo_contado, :observaciones)"),
-                {
-                    "id_terminal": str(entrada.id_terminal),
-                    "id_usuario": str(ctx["user_id"]),
-                    "efectivo_contado": float(entrada.efectivo_contado),
-                    "observaciones": entrada.observaciones
-                }
-            )
-        except Exception:
-            # Si no existe el wrapper, usar función original
-            result = await db.execute(
-                text("SELECT fn_cerrar_caja(:id_terminal, :id_usuario, :efectivo_contado, :observaciones)"),
-                {
-                    "id_terminal": str(entrada.id_terminal),
-                    "id_usuario": str(ctx["user_id"]),
-                    "efectivo_contado": float(entrada.efectivo_contado),
-                    "observaciones": entrada.observaciones
-                }
-            )
+        # ✅ MEJORADO: Mejor manejo de transacciones
+        result = await db.execute(
+            text("SELECT fn_cerrar_caja(:id_terminal, :id_usuario, :efectivo_contado, :observaciones)"),
+            {
+                "id_terminal": str(entrada.id_terminal),
+                "id_usuario": str(ctx["user_id"]),
+                "efectivo_contado": float(entrada.efectivo_contado),
+                "observaciones": entrada.observaciones
+            }
+        )
         
         id_corte = result.scalar()
         await db.commit()
@@ -330,7 +317,7 @@ async def cerrar_caja(
         }
         
     except Exception as e:
-        await db.rollback()
+        await db.rollback()  # ✅ IMPORTANTE: Rollback explícito
         raise HTTPException(status_code=500, detail=f"Error al cerrar caja: {str(e)}")
 
 @router.post("/generar-corte-x", response_model=dict)
