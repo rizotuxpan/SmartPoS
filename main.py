@@ -27,7 +27,6 @@ from producto_variante import router as producto_variante_router
 from usuario           import router as usuario_router
 from megacontrol       import router as megacontrol_router
 from sesion_caja       import router as sesion_caja_router
-from auditoria         import router as auditoria_router
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -185,12 +184,6 @@ app.include_router(
     sesion_caja_router,
     prefix="/sesion-caja",
     tags=["Sesión de Caja y Cortes X, Z"]
-)
-
-app.include_router(
-    auditoria_router,
-    prefix="/auditoria",
-    tags=["Auditoría y Trazabilidad"]
 )
 
 # ---------------------------
