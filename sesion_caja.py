@@ -621,3 +621,172 @@ async def obtener_resumen_caja_hoy(
         "success": True,
         "data": dict(resumen)
     }
+
+# =====================================================
+# AGREGAR A sesion_caja.py - MODELO PARA CORTE Z
+# =====================================================
+
+class DatosCorteZRead(BaseModel):
+    # Datos básicos de terminal
+    id_terminal: UUID
+    codigo_terminal: str
+    nombre_terminal: str
+    
+    # Datos de sesión
+    id_sesion: UUID
+    fecha_apertura: datetime
+    fecha_cierre: datetime
+    
+    # Usuarios
+    usuario_apertura: str
+    usuario_cierre: str
+    
+    # Datos financieros de ventas (SOLO COMPLETADAS)
+    cantidad_ventas: int
+    total_ventas: Decimal
+    subtotal_ventas: Decimal
+    impuestos_ventas: Decimal
+    descuentos_ventas: Decimal
+    
+    # Formas de pago (separadas correctamente)
+    total_efectivo: Decimal
+    total_tarjeta: Decimal
+    total_transferencia: Decimal
+    total_monedero: Decimal        # Código 05 - separado
+    total_apartado: Decimal        # Código 98 - solo anticipos
+    
+    # Datos específicos de Corte Z (Cierre)
+    fondo_inicial: Decimal
+    efectivo_sistema: Decimal      # Calculado por sistema
+    efectivo_contado: Decimal      # Contado físicamente
+    diferencia_efectivo: Decimal   # Sistema - Contado
+    observaciones_cierre: Optional[str]
+    
+    # Datos de período
+    inicio_periodo: datetime
+    fin_periodo: datetime
+    duracion_sesion_horas: Decimal
+    
+    model_config = {"from_attributes": True}
+
+# =====================================================
+# AGREGAR A sesion_caja.py - ENDPOINT DATOS CORTE Z
+# =====================================================
+
+@router.get("/datos-corte-z/{id_terminal}", response_model=DatosCorteZRead)
+async def obtener_datos_corte_z(
+    id_terminal: UUID,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Obtener datos del último Corte Z (sesión cerrada) de una terminal.
+    """
+    stmt = text("""
+        SELECT 
+            sc.id_terminal,
+            t.codigo AS codigo_terminal,
+            t.nombre AS nombre_terminal,
+            sc.id_sesion,
+            sc.fecha_apertura,
+            sc.fecha_cierre,
+            ua.nombre AS usuario_apertura,
+            uc.nombre AS usuario_cierre,
+            
+            -- Datos de ventas del día (desde totales calculados)
+            COALESCE(tv.cantidad_ventas, 0) AS cantidad_ventas,
+            COALESCE(tv.total_ventas, 0.00) AS total_ventas,
+            COALESCE(tv.subtotal_ventas, 0.00) AS subtotal_ventas,
+            COALESCE(tv.impuestos_ventas, 0.00) AS impuestos_ventas,
+            COALESCE(tv.descuentos_ventas, 0.00) AS descuentos_ventas,
+            
+            -- Formas de pago (separadas correctamente)
+            COALESCE(tfp.total_efectivo, 0.00) AS total_efectivo,
+            COALESCE(tfp.total_tarjeta, 0.00) AS total_tarjeta,
+            COALESCE(tfp.total_transferencia, 0.00) AS total_transferencia,
+            COALESCE(tfp.total_monedero, 0.00) AS total_monedero,
+            COALESCE(tfp.total_apartado, 0.00) AS total_apartado,
+            
+            -- Datos específicos de Corte Z
+            sc.fondo_inicial,
+            sc.efectivo_sistema,
+            sc.efectivo_contado,
+            sc.diferencia_efectivo,
+            sc.observaciones_cierre,
+            
+            -- Período de la sesión
+            sc.fecha_apertura AS inicio_periodo,
+            sc.fecha_cierre AS fin_periodo,
+            EXTRACT(epoch FROM sc.fecha_cierre - sc.fecha_apertura) / 3600.0 AS duracion_sesion_horas
+
+        FROM sesion_caja sc
+        INNER JOIN terminal t ON sc.id_terminal = t.id_terminal
+        INNER JOIN usuario ua ON sc.id_usuario_apertura = ua.id_usuario
+        LEFT JOIN usuario uc ON sc.id_usuario_cierre = uc.id_usuario
+        
+        -- Obtener totales de ventas del día de cierre (SOLO COMPLETADAS)
+        LEFT JOIN (
+            SELECT 
+                v.id_terminal,
+                COUNT(v.id_venta) AS cantidad_ventas,
+                SUM(v.total) AS total_ventas,
+                SUM(v.subtotal) AS subtotal_ventas,
+                SUM(v.impuesto) AS impuestos_ventas,
+                SUM(v.descuento) AS descuentos_ventas
+            FROM venta v
+            WHERE v.estado_venta = 'COMPLETADA'  -- Solo ventas completadas
+            AND DATE(v.fecha_venta) = (
+                SELECT DATE(sc2.fecha_cierre) 
+                FROM sesion_caja sc2 
+                WHERE sc2.id_terminal = :id_terminal 
+                AND sc2.estado_sesion = 'CERRADA'
+                ORDER BY sc2.fecha_cierre DESC 
+                LIMIT 1
+            )
+            GROUP BY v.id_terminal
+        ) tv ON sc.id_terminal = tv.id_terminal
+        
+        -- Obtener totales por forma de pago del día de cierre (SEPARADOS CORRECTAMENTE)
+        LEFT JOIN (
+            SELECT 
+                v.id_terminal,
+                -- Efectivo (código 01)
+                SUM(CASE WHEN cfp.nombre = '01' THEN p.monto ELSE 0 END) AS total_efectivo,
+                -- Tarjetas (códigos 04, 28)
+                SUM(CASE WHEN cfp.nombre IN ('04', '28') THEN p.monto ELSE 0 END) AS total_tarjeta,
+                -- Transferencias (código 03)
+                SUM(CASE WHEN cfp.nombre = '03' THEN p.monto ELSE 0 END) AS total_transferencia,
+                -- Monedero electrónico (código 05) - SEPARADO
+                SUM(CASE WHEN cfp.nombre = '05' THEN p.monto ELSE 0 END) AS total_monedero,
+                -- Apartados (código 98) - SOLO ANTICIPOS - SEPARADO
+                SUM(CASE WHEN cfp.nombre = '98' THEN p.monto ELSE 0 END) AS total_apartado
+            FROM venta v
+            INNER JOIN pago p ON v.id_venta = p.id_venta
+            INNER JOIN cat_forma_pago cfp ON p.id_forma_pago = cfp.id_forma_pago
+            WHERE DATE(v.fecha_venta) = (
+                SELECT DATE(sc3.fecha_cierre) 
+                FROM sesion_caja sc3 
+                WHERE sc3.id_terminal = :id_terminal 
+                AND sc3.estado_sesion = 'CERRADA'
+                ORDER BY sc3.fecha_cierre DESC 
+                LIMIT 1
+            )
+            -- INCLUIR TODOS LOS PAGOS (completadas y apartados)
+            GROUP BY v.id_terminal
+        ) tfp ON sc.id_terminal = tfp.id_terminal
+
+        WHERE sc.id_terminal = :id_terminal
+        AND sc.estado_sesion = 'CERRADA'
+        ORDER BY sc.fecha_cierre DESC
+        LIMIT 1
+    """)
+    
+    result = await db.execute(stmt, {"id_terminal": str(id_terminal)})
+    datos = result.mappings().fetchone()
+    
+    if not datos:
+        raise HTTPException(
+            status_code=400, 
+            detail="No se encontró ningún Corte Z (sesión cerrada) para esta terminal"
+        )
+    
+    return DatosCorteZRead.model_validate(dict(datos))
