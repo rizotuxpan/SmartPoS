@@ -837,37 +837,181 @@ async def crear_variante(
     from uuid import uuid4
     from sqlalchemy import text
     
-    # Obtener estado activo y contexto
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    tenant_id, user_id = await obtener_contexto(db)
-    
-    # Crear nueva variante
-    nueva_variante = ProductoVariante(
-        id_empresa=tenant_id,
-        id_estado=estado_activo_id,
-        created_by=user_id,
-        modified_by=user_id,
-        **variante_data.model_dump()
-    )
+    # ✅ IMPORTACIONES NECESARIAS para las validaciones
+    # Asegúrate de que estos imports estén al inicio del archivo producto_variante.py
+    # from producto import Producto
+    # Ya tenemos: CatTalla, CatColor, CatTamano
     
     try:
+        # ✅ CORRECCIÓN 1: Usar obtener_contexto() como diccionario
+        estado_activo_id = await get_estado_id_por_clave("act", db)
+        ctx = await obtener_contexto(db)  # ✅ Es un diccionario
+        
+        # ✅ VALIDACIÓN 1: Verificar que el producto existe
+        producto_query = select(Producto).where(
+            Producto.id_producto == variante_data.id_producto,
+            Producto.id_estado == estado_activo_id
+        )
+        producto_result = await db.execute(producto_query)
+        producto = producto_result.scalar_one_or_none()
+        
+        if not producto:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No existe un producto con ID {variante_data.id_producto}"
+            )
+        
+        # ✅ VALIDACIÓN 2: Verificar que el SKU no existe
+        sku_query = select(ProductoVariante).where(
+            ProductoVariante.sku_variante == variante_data.sku_variante,
+            ProductoVariante.id_empresa == ctx["tenant_id"],
+            ProductoVariante.id_estado == estado_activo_id
+        )
+        sku_result = await db.execute(sku_query)
+        if sku_result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail=f"Ya existe una variante con SKU '{variante_data.sku_variante}' en la empresa"
+            )
+        
+        # ✅ VALIDACIÓN 3: Verificar código de barras si se proporciona
+        if variante_data.codigo_barras_var:
+            codigo_query = select(ProductoVariante).where(
+                ProductoVariante.codigo_barras_var == variante_data.codigo_barras_var,
+                ProductoVariante.id_empresa == ctx["tenant_id"],
+                ProductoVariante.id_estado == estado_activo_id
+            )
+            codigo_result = await db.execute(codigo_query)
+            if codigo_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Ya existe una variante con código de barras '{variante_data.codigo_barras_var}' en la empresa"
+                )
+        
+        # ✅ VALIDACIÓN 4: Verificar atributos de variante si se proporcionan
+        if variante_data.id_talla:
+            talla_query = select(CatTalla).where(
+                CatTalla.id_talla == variante_data.id_talla,
+                CatTalla.id_empresa == ctx["tenant_id"],
+                CatTalla.id_estado == estado_activo_id
+            )
+            talla_result = await db.execute(talla_query)
+            if not talla_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No existe una talla con ID {variante_data.id_talla} en la empresa"
+                )
+        
+        if variante_data.id_color:
+            color_query = select(CatColor).where(
+                CatColor.id_color == variante_data.id_color,
+                CatColor.id_empresa == ctx["tenant_id"],
+                CatColor.id_estado == estado_activo_id
+            )
+            color_result = await db.execute(color_query)
+            if not color_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No existe un color con ID {variante_data.id_color} en la empresa"
+                )
+        
+        if variante_data.id_tamano:
+            tamano_query = select(CatTamano).where(
+                CatTamano.id_tamano == variante_data.id_tamano,
+                CatTamano.id_empresa == ctx["tenant_id"],
+                CatTamano.id_estado == estado_activo_id
+            )
+            tamano_result = await db.execute(tamano_query)
+            if not tamano_result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No existe un tamaño con ID {variante_data.id_tamano} en la empresa"
+                )
+        
+        # ✅ CREAR NUEVA VARIANTE CON CONTEXTO CORRECTO
+        nueva_variante = ProductoVariante(
+            id_empresa=ctx["tenant_id"],      # ✅ Usar diccionario
+            id_estado=estado_activo_id,
+            created_by=ctx["user_id"],        # ✅ Usar diccionario  
+            modified_by=ctx["user_id"],       # ✅ Usar diccionario
+            **variante_data.model_dump()
+        )
+        
         db.add(nueva_variante)
-        await db.commit()
+        await db.flush()      # ✅ Flush antes de refresh
         await db.refresh(nueva_variante)
+        await db.commit()
         
         return {
             "success": True,
             "message": "Variante creada exitosamente",
             "data": ProductoVarianteRead.model_validate(nueva_variante).model_dump()
         }
-    except Exception as e:
+        
+    except HTTPException:
+        # ✅ Re-lanzar HTTPExceptions existentes
         await db.rollback()
-        if "uq_variante_empresa_sku" in str(e):
-            raise HTTPException(status_code=409, detail="Ya existe una variante con ese SKU en la empresa")
-        elif "uq_variante_empresa_codbar" in str(e):
-            raise HTTPException(status_code=409, detail="Ya existe una variante con ese código de barras en la empresa")
+        raise
+        
+    except Exception as e:
+        # ✅ MEJOR MANEJO DE ERRORES - Mostrar error específico
+        await db.rollback()
+        
+        error_str = str(e).lower()
+        
+        # Errores de constraint específicos
+        if "uq_variante_empresa_sku" in error_str:
+            raise HTTPException(
+                status_code=409, 
+                detail="Ya existe una variante con ese SKU en la empresa"
+            )
+        elif "uq_variante_empresa_codbar" in error_str:
+            raise HTTPException(
+                status_code=409, 
+                detail="Ya existe una variante con ese código de barras en la empresa"
+            )
+        elif "foreign key" in error_str:
+            if "id_producto" in error_str:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El ID del producto no es válido"
+                )
+            elif "id_talla" in error_str:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El ID de talla no es válido"
+                )
+            elif "id_color" in error_str:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El ID de color no es válido"
+                )
+            elif "id_tamano" in error_str:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El ID de tamaño no es válido"
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Error de referencia de clave foránea"
+                )
+        elif "check constraint" in error_str:
+            raise HTTPException(
+                status_code=400,
+                detail="Error de validación en los datos proporcionados"
+            )
+        elif "not null" in error_str:
+            raise HTTPException(
+                status_code=400,
+                detail="Faltan campos obligatorios"
+            )
         else:
-            raise HTTPException(status_code=400, detail="Error al crear la variante")
+            # ✅ Mostrar error específico en desarrollo
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error interno del servidor: {str(e)}"
+            )
 
 @router.put("/{id_producto_variante}", response_model=dict)
 async def actualizar_variante(
