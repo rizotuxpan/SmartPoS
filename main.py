@@ -27,6 +27,10 @@ from producto_variante import router as producto_variante_router
 from usuario           import router as usuario_router
 from megacontrol       import router as megacontrol_router
 from sesion_caja       import router as sesion_caja_router
+# ===== NUEVOS ROUTERS PARA CATÁLOGOS =====
+from tamanos           import router as tamanos_router        # tamanos.py
+from colores           import router as colores_router        # colores.py
+from tallas            import router as tallas_router         # tallas.py
 
 # -------------------------------
 # Inicialización de la aplicación
@@ -184,6 +188,25 @@ app.include_router(
     sesion_caja_router,
     prefix="/sesion-caja",
     tags=["Sesión de Caja y Cortes X, Z"]
+)
+
+# ===== INCLUSIÓN DE LOS NUEVOS ROUTERS DE CATÁLOGOS =====
+app.include_router(
+    tamanos_router,
+    prefix="/tamanos",
+    tags=["Catálogo de Tamaños"]
+)
+
+app.include_router(
+    colores_router,
+    prefix="/colores",
+    tags=["Catálogo de Colores"]
+)
+
+app.include_router(
+    tallas_router,
+    prefix="/tallas",
+    tags=["Catálogo de Tallas"]
 )
 
 # ---------------------------
