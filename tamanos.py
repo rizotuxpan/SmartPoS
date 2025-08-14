@@ -10,36 +10,20 @@ from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID, uuid4
 from datetime import datetime
-from sqlalchemy import Column, String, Text, DateTime, Integer, func, select, text, insert, delete
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Importa base de modelos y función de sesión configurada con RLS
-from db import Base, get_async_db
+from db import get_async_db
 # Utilidad para resolver claves de estado con caché
 from utils.estado import get_estado_id_por_clave
 # Utilidad para extraer tenant y usuario desde la sesión (RLS)
 from utils.contexto import obtener_contexto
 
 # ---------------------------
-# Modelo ORM SQLAlchemy (importado desde producto_variante.py)
+# Importar modelo ORM desde producto_variante.py
 # ---------------------------
-class CatTamano(Base):
-    """Modelo ORM para catálogo de tamaños"""
-    __tablename__ = "cat_tamano"
-    
-    id_tamano = Column(PG_UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    id_empresa = Column(PG_UUID(as_uuid=True), nullable=False)
-    codigo = Column(String(10), nullable=False)
-    nombre = Column(String(50), nullable=False)
-    descripcion = Column(Text)
-    unidad_medida = Column(String(10))
-    orden_visualizacion = Column(Integer, server_default="1")
-    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+from producto_variante import CatTamano
 
 # ---------------------------
 # Schemas de validación con Pydantic
