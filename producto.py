@@ -1006,9 +1006,9 @@ async def validar_integridad_variantes_endpoint(
     }
 
 
-@router.get("/consecutivo/proximo/{categoria_id}", response_model=dict)
+@router.get("/consecutivo/proximo/{id_categoria}", response_model=dict)
 async def obtener_proximo_consecutivo(
-    categoria_id: UUID,
+    id_categoria: UUID,
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -1031,14 +1031,14 @@ async def obtener_proximo_consecutivo(
                 SELECT COALESCE(ultimo_numero, 0) + 1 AS proximo
                 FROM categoria_consecutivos
                 WHERE id_empresa = :id_empresa
-                  AND id_categoria = :categoria_id
+                  AND id_categoria = :id_categoria
             )
             SELECT COALESCE((SELECT proximo FROM siguiente), 1) AS proximo_consecutivo;
         """)
         
         result = await db.execute(query, {
             "id_empresa": str(ctx["tenant_id"]),
-            "categoria_id": str(id_categoria)
+            "id_categoria": str(id_categoria)
         })
         
         row = result.first()
@@ -1053,7 +1053,7 @@ async def obtener_proximo_consecutivo(
             "success": True,
             "message": "Próximo consecutivo obtenido exitosamente",
             "data": {
-                "categoria_id": str(categoria_id),
+                "id_categoria": str(id_categoria),
                 "proximo_consecutivo": proximo_consecutivo,
                 "id_empresa": str(ctx["tenant_id"])
             }
