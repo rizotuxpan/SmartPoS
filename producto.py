@@ -421,11 +421,11 @@ async def crear_producto(
                     status_code=409,
                     detail="Error de duplicidad en los datos del producto"
                 )
-        //elif "cat_subcategoria" in error_msg:
-        //    raise HTTPException(
-        //        status_code=400,
-        //        detail="Error de relación entre categoría y subcategoría"
-        //    )
+        elif "xxxcat_subcategoria" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail="Error de relación entre categoría y subcategoría"
+            )
         else:
             raise HTTPException(
                 status_code=500,
