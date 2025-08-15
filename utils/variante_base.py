@@ -73,6 +73,7 @@ async def crear_variante_base_automatica(
         id_tamano=None,
         
         # Campos de auditoría
+        id_empresa=ctx["tenant_id"],  # ← Campo obligatorio que faltaba
         id_estado=estado_activo_id,
         created_by=ctx["user_id"],
         modified_by=ctx["user_id"]
