@@ -1004,3 +1004,63 @@ async def validar_integridad_variantes_endpoint(
         "message": "Validación de integridad completada",
         "reporte": reporte
     }
+
+
+@router.get("/consecutivo/proximo/{categoria_id}", response_model=dict)
+async def obtener_proximo_consecutivo(
+    categoria_id: UUID,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Obtiene el próximo número consecutivo para una categoría específica.
+    
+    Args:
+        categoria_id: UUID de la categoría para la cual obtener el consecutivo
+        
+    Returns:
+        dict: Contiene el próximo número consecutivo disponible
+    """
+    
+    try:
+        # Obtener contexto para id_empresa
+        ctx = await obtener_contexto(db)
+        
+        # Ejecutar query para obtener próximo consecutivo
+        query = text("""
+            WITH siguiente AS (
+                SELECT COALESCE(ultimo_numero, 0) + 1 AS proximo
+                FROM categoria_consecutivos
+                WHERE id_empresa = :id_empresa
+                  AND categoria_id = :categoria_id
+            )
+            SELECT COALESCE((SELECT proximo FROM siguiente), 1) AS proximo_consecutivo;
+        """)
+        
+        result = await db.execute(query, {
+            "id_empresa": str(ctx["tenant_id"]),
+            "categoria_id": str(categoria_id)
+        })
+        
+        row = result.first()
+        
+        if not row:
+            # Si no hay resultado, comenzar desde 1
+            proximo_consecutivo = 1
+        else:
+            proximo_consecutivo = row.proximo_consecutivo
+        
+        return {
+            "success": True,
+            "message": "Próximo consecutivo obtenido exitosamente",
+            "data": {
+                "categoria_id": str(categoria_id),
+                "proximo_consecutivo": proximo_consecutivo,
+                "id_empresa": str(ctx["tenant_id"])
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo próximo consecutivo: {str(e)}"
+        )
