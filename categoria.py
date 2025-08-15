@@ -135,12 +135,12 @@ async def listar_categorias_combo(db: AsyncSession = Depends(get_async_db)):
     """Endpoint optimizado para llenar ComboBox de categorías"""
     estado_activo_id = await get_estado_id_por_clave("act", db)
     
-    query = select(Categoria.id_categoria, Categoria.nombre).where(
+    query = select(Categoria.id_categoria, Categoria.nombre, Categoria.descripcion).where(
         Categoria.id_estado == estado_activo_id
     ).order_by(Categoria.nombre)
     
     result = await db.execute(query)
-    categorias = [{"id": str(row[0]), "nombre": row[1]} for row in result]
+    categorias = [{"id": str(row[0]), "nombre": f"{row[1]} | {row[2]}"} for row in result]
     
     return {"success": True, "data": categorias}
 
