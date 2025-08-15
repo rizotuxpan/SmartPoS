@@ -1,4 +1,4 @@
-    # producto.py - VERSIÓN CORREGIDA PARA SQLALCHEMY 2.x
+# producto.py - VERSIÓN CORREGIDA PARA SQLALCHEMY 2.x
 # ---------------------------
 # Módulo de endpoints REST para gestión de la entidad Producto.
 # Incluye objetos relacionados completos y filtros avanzados
@@ -265,134 +265,42 @@ async def crear_producto(
         # Confirmar transacción
         await db.commit()
         
-        # ===== OBTENER INFORMACIÓN EXPANDIDA DEL PRODUCTO RECIÉN CREADO =====
-        # Consulta con joins para obtener nombres de entidades relacionadas
-        query_expandido = select(
-            Producto,
-            Marca,
-            UMedida,
-            Categoria,
-            Subcategoria
-        ).select_from(
-            Producto.__table__
-            .outerjoin(
-                Marca.__table__,
-                and_(
-                    Producto.id_marca == Marca.id_marca,
-                    Marca.id_estado == estado_activo_id
-                )
-            )
-            .outerjoin(
-                UMedida.__table__,
-                and_(
-                    Producto.id_umedida == UMedida.id_umedida,
-                    UMedida.id_estado == estado_activo_id
-                )
-            )
-            .outerjoin(
-                Categoria.__table__,
-                and_(
-                    Producto.id_categoria == Categoria.id_categoria,
-                    Categoria.id_estado == estado_activo_id
-                )
-            )
-            .outerjoin(
-                Subcategoria.__table__,
-                and_(
-                    Producto.id_subcategoria == Subcategoria.id_subcategoria,
-                    Subcategoria.id_estado == estado_activo_id
-                )
-            )
-        ).where(
-            Producto.id_producto == nuevo_producto.id_producto,
-            Producto.id_estado == estado_activo_id
-        )
-        
-        result_expandido = await db.execute(query_expandido)
-        row_expandido = result_expandido.first()
-        
-        if not row_expandido:
-            raise HTTPException(status_code=500, detail="Error obteniendo información expandida del producto creado")
-        
-        # Construir objeto producto expandido
-        producto_obj = row_expandido[0]
-        marca_obj = row_expandido[1]
-        umedida_obj = row_expandido[2]
-        categoria_obj = row_expandido[3]
-        subcategoria_obj = row_expandido[4]
-        
-        # Convertir a diccionario base
-        producto_expandido = ProductoRead.model_validate(producto_obj).model_dump()
-        
-        # Agregar información expandida de entidades relacionadas
-        producto_expandido['marca'] = {
-            "id_marca": str(marca_obj.id_marca) if marca_obj else None,
-            "nombre": marca_obj.nombre if marca_obj else None,
-            "descripcion": marca_obj.descripcion if marca_obj else None
-        } if marca_obj else None
-        
-        producto_expandido['umedida'] = {
-            "id_umedida": str(umedida_obj.id_umedida) if umedida_obj else None,
-            "nombre": umedida_obj.nombre if umedida_obj else None,
-            "simbolo": umedida_obj.simbolo if umedida_obj else None,
-            "descripcion": umedida_obj.descripcion if umedida_obj else None
-        } if umedida_obj else None
-        
-        producto_expandido['categoria'] = {
-            "id_categoria": str(categoria_obj.id_categoria) if categoria_obj else None,
-            "nombre": categoria_obj.nombre if categoria_obj else None,
-            "descripcion": categoria_obj.descripcion if categoria_obj else None
-        } if categoria_obj else None
-        
-        producto_expandido['subcategoria'] = {
-            "id_subcategoria": str(subcategoria_obj.id_subcategoria) if subcategoria_obj else None,
-            "nombre": subcategoria_obj.nombre if subcategoria_obj else None,
-            "descripcion": subcategoria_obj.descripcion if subcategoria_obj else None,
-            "id_categoria": str(subcategoria_obj.id_categoria) if subcategoria_obj else None
-        } if subcategoria_obj else None
-        
-        # ===== CONSTRUIR RESPUESTA =====
+        # ===== RESPUESTA SIMPLIFICADA =====
         respuesta = {
             "success": True,
             "message": "Producto creado correctamente",
-            "data": producto_expandido
+            "data": {
+                "id_producto": str(nuevo_producto.id_producto),
+                "sku": nuevo_producto.sku,
+                "codigo_barras": nuevo_producto.codigo_barras,
+                "nombre": nuevo_producto.nombre,
+                "descripcion": nuevo_producto.descripcion,
+                "precio_base": float(nuevo_producto.precio_base) if nuevo_producto.precio_base else 0.0,
+                "es_kit": nuevo_producto.es_kit,
+                "vida_util_dias": nuevo_producto.vida_util_dias,
+                "id_marca": str(nuevo_producto.id_marca) if nuevo_producto.id_marca else None,
+                "id_umedida": str(nuevo_producto.id_umedida) if nuevo_producto.id_umedida else None,
+                "id_categoria": str(nuevo_producto.id_categoria) if nuevo_producto.id_categoria else None,
+                "id_subcategoria": str(nuevo_producto.id_subcategoria) if nuevo_producto.id_subcategoria else None,
+                "created_at": nuevo_producto.created_at.isoformat() if nuevo_producto.created_at else None
+            }
         }
         
         # Agregar información de variante base si se creó
         if variante_base:
-            # También obtener información expandida de la variante base
-            variante_data = {
+            respuesta["variante_base"] = {
                 "id_producto_variante": str(variante_base.id_producto_variante),
                 "sku_variante": variante_base.sku_variante,
                 "precio": float(variante_base.precio) if variante_base.precio else 0.0,
                 "codigo_barras_var": variante_base.codigo_barras_var,
                 "peso_gr": float(variante_base.peso_gr) if variante_base.peso_gr else 0.0,
                 "vida_util_dias": variante_base.vida_util_dias,
-                "id_producto": str(variante_base.id_producto),
-                "id_empresa": str(variante_base.id_empresa),
-                "id_estado": str(variante_base.id_estado),
-                "created_by": str(variante_base.created_by),
-                "modified_by": str(variante_base.modified_by),
-                "created_at": variante_base.created_at.isoformat() if variante_base.created_at else None,
-                "updated_at": variante_base.updated_at.isoformat() if variante_base.updated_at else None,
-                
-                # Incluir información del producto padre expandida
-                "producto": producto_expandido,
-                
-                # Información de atributos de variante (null para variante base)
-                "talla": None,
-                "color": None,
-                "tamano": None,
-                "id_talla": None,
-                "id_color": None,
-                "id_tamano": None
+                "created_at": variante_base.created_at.isoformat() if variante_base.created_at else None
             }
-            
-            respuesta["variante_base"] = variante_data
             respuesta["message"] += " (con variante base automática)"
             
-            # Cambiar el data principal para que sea la variante con el producto expandido
-            respuesta["data"] = variante_data
+            # Cambiar el data principal para que sea la variante
+            respuesta["data"] = respuesta["variante_base"]
         
         return respuesta
         
