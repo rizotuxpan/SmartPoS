@@ -140,7 +140,7 @@ async def listar_categorias_combo(db: AsyncSession = Depends(get_async_db)):
     ).order_by(Categoria.nombre)
     
     result = await db.execute(query)
-    categorias = [{"id": str(row[0]), "nombre": f"{row[1]} | {row[2]}"} for row in result]
+    categorias = [{"id": str(row[0]), "nombre": f"{row[1]} · {row[2]}"} for row in result]
     
     return {"success": True, "data": categorias}
 
