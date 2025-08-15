@@ -1031,14 +1031,14 @@ async def obtener_proximo_consecutivo(
                 SELECT COALESCE(ultimo_numero, 0) + 1 AS proximo
                 FROM categoria_consecutivos
                 WHERE id_empresa = :id_empresa
-                  AND categoria_id = :categoria_id
+                  AND id_categoria = :categoria_id
             )
             SELECT COALESCE((SELECT proximo FROM siguiente), 1) AS proximo_consecutivo;
         """)
         
         result = await db.execute(query, {
             "id_empresa": str(ctx["tenant_id"]),
-            "categoria_id": str(categoria_id)
+            "categoria_id": str(id_categoria)
         })
         
         row = result.first()
