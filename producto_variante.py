@@ -26,6 +26,7 @@ from producto import Producto, ProductoRead
 from categoria import Categoria, CategoriaRead
 from subcategoria import Subcategoria, SubcategoriaRead
 from marca import Marca, MarcaRead
+from venta_detalle import VentaDetalle, VentaDetalleRead
 
 # ---------------------------
 # Modelos ORM SQLAlchemy para catálogos
