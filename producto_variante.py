@@ -10,7 +10,7 @@ from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 from uuid import UUID
-from sqlalchemy import Column, String, Numeric, Integer, Boolean, Text, ForeignKey, DateTime, func, select, and_, or_, cast
+from sqlalchemy import Column, String, Numeric, Integer, Boolean, Text, ForeignKey, DateTime, func, select, delete, and_, or_, cast
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, relationship
