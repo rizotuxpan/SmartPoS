@@ -1092,7 +1092,7 @@ async def eliminar_variante(
     if tiene_ventas.scalar():
         raise HTTPException(
             status_code=409, 
-            detail="No se puede eliminar la variante porque está asociada a ventas existentes"
+            detail="No se puede eliminar porque está asociado a ventas existentes"
         )
 
     # 3) Ejecutar DELETE
