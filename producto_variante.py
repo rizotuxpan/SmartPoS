@@ -10,7 +10,7 @@ from typing import Optional, List
 from decimal import Decimal
 from datetime import datetime
 from uuid import UUID
-from sqlalchemy import Column, String, Numeric, Integer, Boolean, Text, ForeignKey, DateTime, func, select, delete, and_, or_, cast
+from sqlalchemy import Column, String, Numeric, Integer, Boolean, Text, ForeignKey, DateTime, func, select, delete, update, and_, or_, cast
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, CITEXT
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, relationship
@@ -1070,32 +1070,28 @@ async def eliminar_variante(
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Elimina lógicamente una variante cambiando su estado a inactivo.
-    Se respetan políticas RLS.
+    Elimina una variante física o lógicamente según sus dependencias.
     """
-    try:
-        # 1) Verificar existencia bajo RLS (sin filtrar por estado)
-        result = await db.execute(
-            select(ProductoVariante).where(
-                ProductoVariante.id_producto_variante == id_producto_variante
-            )
+    # 1) Verificar existencia
+    result = await db.execute(
+        select(ProductoVariante).where(
+            ProductoVariante.id_producto_variante == id_producto_variante
         )
-        variante = result.scalar_one_or_none()
-        if not variante:
-            raise HTTPException(status_code=404, detail="Variante no encontrada")
+    )
+    variante = result.scalar_one_or_none()
+    if not variante:
+        raise HTTPException(status_code=404, detail="Variante no encontrada")
 
-        # 2) Obtener contexto y estado inactivo
+    # 2) Verificar si tiene ventas asociadas
+    tiene_ventas = await db.execute(
+        select(exists().where(VentaDetalle.id_producto_var == id_producto_variante))
+    )
+    
+    if tiene_ventas.scalar():
+        # ELIMINACIÓN LÓGICA - Tiene ventas, no se puede eliminar físicamente
         tenant_id, user_id = await obtener_contexto(db)
         estado_inactivo_id = await get_estado_id_por_clave("ina", db)
-
-        # 3) Verificar si ya está inactiva
-        if variante.id_estado == estado_inactivo_id:
-            return {
-                "success": True, 
-                "message": "La variante ya estaba eliminada"
-            }
-
-        # 4) Ejecutar UPDATE (equivalente al DELETE físico)
+        
         await db.execute(
             update(ProductoVariante)
             .where(ProductoVariante.id_producto_variante == id_producto_variante)
@@ -1104,25 +1100,18 @@ async def eliminar_variante(
                 modified_by=user_id
             )
         )
-
-        # 5) Confirmar transacción
-        await db.commit()
-
-        # 6) Responder al cliente
-        return {
-            "success": True, 
-            "message": "Variante eliminada exitosamente"
-        }
-        
-    except HTTPException:
-        # Re-lanzar HTTPExceptions específicas (como 404)
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Error al eliminar la variante: {str(e)}"
+        mensaje = "Variante desactivada (tiene ventas asociadas)"
+    else:
+        # ELIMINACIÓN FÍSICA - No tiene ventas, eliminación limpia
+        await db.execute(
+            delete(ProductoVariante).where(
+                ProductoVariante.id_producto_variante == id_producto_variante
+            )
         )
+        mensaje = "Variante eliminada permanentemente"
+
+    await db.commit()
+    return {"success": True, "message": mensaje}
 
 # ===== ENDPOINTS ADICIONALES =====
 
