@@ -1064,46 +1064,36 @@ async def actualizar_variante(
         else:
             raise HTTPException(status_code=400, detail="Error al actualizar la variante")
 
-@router.delete("/{id_producto_variante}", response_model=dict)
+@router.delete("/{id_producto_variante}", status_code=200)
 async def eliminar_variante(
-    id_producto_variante: UUID,
+    id_producto_variante: UUID, 
     db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Elimina (desactiva) una variante cambiando su estado a "inactivo".
+    Elimina físicamente una variante. Se respetan políticas RLS.
     """
-    estado_activo_id = await get_estado_id_por_clave("act", db)
-    estado_inactivo_id = await get_estado_id_por_clave("ina", db)
-    tenant_id, user_id = await obtener_contexto(db)
-    
-    # Buscar variante existente
-    query = select(ProductoVariante).where(
-        and_(
-            ProductoVariante.id_producto_variante == id_producto_variante,
-            ProductoVariante.id_estado == estado_activo_id
+    # 1) Verificar existencia bajo RLS
+    result = await db.execute(
+        select(ProductoVariante).where(
+            ProductoVariante.id_producto_variante == id_producto_variante
         )
     )
-    
-    result = await db.execute(query)
     variante = result.scalar_one_or_none()
-    
     if not variante:
         raise HTTPException(status_code=404, detail="Variante no encontrada")
-    
-    # Cambiar estado a inactivo
-    variante.id_estado = estado_inactivo_id
-    variante.modified_by = user_id
-    
-    try:
-        await db.commit()
-        
-        return {
-            "success": True,
-            "message": "Variante eliminada exitosamente"
-        }
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=400, detail="Error al eliminar la variante")
+
+    # 2) Ejecutar DELETE
+    await db.execute(
+        delete(ProductoVariante).where(
+            ProductoVariante.id_producto_variante == id_producto_variante
+        )
+    )
+
+    # 3) Confirmar transacción
+    await db.commit()
+
+    # 4) Responder al cliente
+    return {"success": True, "message": "Variante eliminada permanentemente"}
 
 # ===== ENDPOINTS ADICIONALES =====
 
