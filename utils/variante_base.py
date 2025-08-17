@@ -46,7 +46,8 @@ async def crear_variante_base_automatica(
     
     # Determinar SKU de variante base
     sku_base = producto.sku or producto.nombre[:20].upper().replace(" ", "_")
-    sku_variante = f"{sku_base}_BASE"
+    sku_variante = f"{sku_base}-BASE"
+    #sku_variante = f"{sku_base}-BASE"   Probar quitar BASE
     
     # Verificar que el SKU no exista
     contador = 1
