@@ -137,8 +137,7 @@ async def listar_subcategorias_combo(
     query = select(
         Subcategoria.id_subcategoria, 
         Subcategoria.nombre,
-        Subcategoria.id_categoria,
-        Subcategoria.descripcion
+        Subcategoria.id_categoria
     ).where(Subcategoria.id_estado == estado_activo_id)
     
     if id_categoria:
@@ -150,7 +149,7 @@ async def listar_subcategorias_combo(
     subcategorias = [
         {
             "id": str(row[0]), 
-            "nombre": row[1] + " · " + row[3],
+            "nombre": row[1],
             "id_categoria": str(row[2])            
         } for row in result
     ]
