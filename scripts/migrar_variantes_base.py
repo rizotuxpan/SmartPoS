@@ -99,7 +99,8 @@ class MigradorVariantes:
     def generar_sku_variante(self, producto: Dict) -> str:
         """Genera SKU único para la variante base"""
         sku_base = producto['sku'] or producto['nombre'][:20].upper().replace(" ", "_")
-        return f"{sku_base}-BASE"
+        #return f"{sku_base}-BASE"
+        return f"{sku_base}"
     
     async def sku_variante_existe(self, sku_variante: str) -> bool:
         """Verifica si un SKU de variante ya existe"""
