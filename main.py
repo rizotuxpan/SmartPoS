@@ -1,6 +1,6 @@
 # main.py
 # -----------------------------------------------
-# Aplicación FastAPI principal para SmartPoS 2025
+# Aplicacion FastAPI principal para SmartPoS 2025
 # -----------------------------------------------
 
 from fastapi import FastAPI                              # Importa la clase principal de FastAPI
@@ -27,13 +27,13 @@ from producto_variante import router as producto_variante_router
 from usuario           import router as usuario_router
 from megacontrol       import router as megacontrol_router
 from sesion_caja       import router as sesion_caja_router
-# ===== NUEVOS ROUTERS PARA CATÁLOGOS =====
+# ===== NUEVOS ROUTERS PARA CATALOGOS =====
 from tamanos           import router as tamanos_router        # tamanos.py
 from colores           import router as colores_router        # colores.py
 from tallas            import router as tallas_router         # tallas.py
 
 # -------------------------------
-# Inicialización de la aplicación
+# Inicializacion de la aplicacion
 # -------------------------------
 app = FastAPI(
     title="MEGAVENTA 2025"            # Nombre de la API que aparecerá en la documentación Swagger
@@ -61,7 +61,7 @@ async def get_latest_version():
     return "2025.1.3"
 
 # -------------------------------------------
-# Inclusión de routers (módulos de endpoints)
+# Inclusion de routers (modulos de endpoints)
 # -------------------------------------------
 app.include_router(
     marcas_router,
@@ -190,17 +190,17 @@ app.include_router(
     tags=["Sesión de Caja y Cortes X, Z"]
 )
 
-# ===== INCLUSIÓN DE LOS NUEVOS ROUTERS DE CATÁLOGOS =====
+# ===== INCLUSION DE LOS NUEVOS ROUTERS DE CATÁLOGOS =====
 app.include_router(
     tamanos_router,
     prefix="/tamanos",
-    tags=["Catálogo de Tamaños"]
+    tags=["Catalogo de Tamanos"]
 )
 
 app.include_router(
     colores_router,
     prefix="/colores",
-    tags=["Catálogo de Colores"]
+    tags=["Catalogo de Colores"]
 )
 
 app.include_router(
@@ -210,9 +210,9 @@ app.include_router(
 )
 
 # ---------------------------
-# Endpoint raíz
+# Endpoint raiz
 # ---------------------------
 @app.get("/")
 async def root():
-    """Retorna un mensaje simple para verificar que el servicio esté en línea"""
+    """Retorna un mensaje simple para verificar que el servicio esta en linea"""
     return {"Estatus": "Online"}
