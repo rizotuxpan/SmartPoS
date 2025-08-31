@@ -27,10 +27,11 @@ from producto_variante import router as producto_variante_router
 from usuario           import router as usuario_router
 from megacontrol       import router as megacontrol_router
 from sesion_caja       import router as sesion_caja_router
-# ===== NUEVOS ROUTERS PARA CATALOGOS =====
 from tamanos           import router as tamanos_router        # tamanos.py
 from colores           import router as colores_router        # colores.py
 from tallas            import router as tallas_router         # tallas.py
+# ===== NUEVOS ROUTERS PARA ETAPA II
+from proveedor        import router as proveedor_router      # proveedor.py
 
 # -------------------------------
 # Inicializacion de la aplicacion
@@ -63,6 +64,13 @@ async def get_latest_version():
 # -------------------------------------------
 # Inclusion de routers (modulos de endpoints)
 # -------------------------------------------
+app.include_router(
+    proveedor_router,
+    prefix="/proveedor",
+    tags=["Proveedores"]
+)
+
+
 app.include_router(
     marcas_router,
     prefix="/marcas",
