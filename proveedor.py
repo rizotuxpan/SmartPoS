@@ -5,7 +5,7 @@
 # Implementa Row-Level Security (RLS) vía variables de sesión en PostgreSQL.
 
 from fastapi import APIRouter, Depends, HTTPException, Query # FastAPI para rutas y dependencias
-from pydantic import BaseModel, EmailStr, Field, field_validator   # Pydantic para schemas de entrada/salida
+from pydantic import BaseModel, Field, field_validator   # Pydantic para schemas de entrada/salida
 from typing import Optional, List                            # Tipos para anotaciones
 from uuid import UUID, uuid4                                 # UUID para identificadores únicos
 from datetime import datetime                                # Fecha y hora
@@ -98,7 +98,7 @@ class ProveedorBase(BaseModel):
     nombre_contacto: Optional[str] = Field(None, max_length=100)
     telefono: Optional[str] = Field(None, max_length=20)
     celular: Optional[str] = Field(None, max_length=20)
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     direccion: Optional[str] = Field(None, max_length=300)
     ciudad: Optional[str] = Field(None, max_length=100)
     estado: Optional[str] = Field(None, max_length=100)
@@ -117,7 +117,7 @@ class ProveedorUpdate(BaseModel):
     nombre_contacto: Optional[str] = Field(None, max_length=100)
     telefono: Optional[str] = Field(None, max_length=20)
     celular: Optional[str] = Field(None, max_length=20)
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     direccion: Optional[str] = Field(None, max_length=300)
     ciudad: Optional[str] = Field(None, max_length=100)
     estado: Optional[str] = Field(None, max_length=100)
