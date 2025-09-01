@@ -1,7 +1,7 @@
 # db.py
 # ---------------------------
-# Configuraci贸n de la conexi贸n y sesi贸n a PostgreSQL con soporte RLS
-# Usando SQLAlchemy Async y FastAPI para inyectar variables de sesi贸n.
+# Configuracion de la conexion y sesion a PostgreSQL con soporte RLS
+# Usando SQLAlchemy Async y FastAPI para inyectar variables de sesion.
 # ---------------------------
 
 import os
@@ -15,12 +15,12 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy import text
 
 # URL de conexi贸n a la base de datos PostgreSQL.
-# Incluye usuario, contrase帽a, host, puerto y nombre de la base.
-db_user = os.getenv("DB_USER")
+# Incluye usuario, contrase, host, puerto y nombre de la base.
+db_user     = os.getenv("DB_USER")
 db_password = os.getenv("DB_PASSWORD")
-db_host = os.getenv("DB_HOST")
-db_port = os.getenv("DB_PORT")
-db_name = os.getenv("DB_NAME")
+db_host     = os.getenv("DB_HOST")
+db_port     = os.getenv("DB_PORT")
+db_name     = os.getenv("DB_NAME")
 
 if not db_password:
     raise ValueError("Se requiere DB_PASSWORD")

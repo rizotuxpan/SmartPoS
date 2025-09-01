@@ -1,7 +1,7 @@
 @echo off
 
-:: Script simple para depuración
-echo === DEPURACIÓN UVICORN ===
+:: Script simple para depuracion
+echo === DEPURACION UVICORN ===
 
 :: Verificar directorio actual
 echo Directorio actual: %CD%
@@ -19,15 +19,15 @@ call .\venv\Scripts\activate.bat
 :: Verificar instalaciones
 echo Verificando instalaciones...
 python -c "import sys; print(f'Python: {sys.version}')"
-python -c "import uvicorn; print(f'Uvicorn instalado: {uvicorn.__version__}')" 2>nul || echo "❌ Uvicorn NO instalado"
-python -c "import fastapi; print(f'FastAPI instalado: {fastapi.__version__}')" 2>nul || echo "❌ FastAPI NO instalado"
+python -c "import uvicorn; print(f'Uvicorn instalado: {uvicorn.__version__}')" 2>nul || echo " Uvicorn NO instalado"
+python -c "import fastapi; print(f'FastAPI instalado: {fastapi.__version__}')" 2>nul || echo " FastAPI NO instalado"
 
 :: Verificar main.py
 echo.
 echo Verificando main.py...
 if exist main.py (
     echo main.py existe
-    python -c "import main; print(' main.py importa correctamente')" 2>nul || echo "Error al importar main.py"
+    python -c "import main; print(f' main.py importa correctamente')" 2>nul || echo "Error al importar main.py"
     python -c "import main; print(f'app encontrada: {hasattr(main, \"app\")}')" 2>nul || echo "Variable app no encontrada"
 ) else (
     echo main.py NO existe
@@ -43,7 +43,7 @@ echo.
 echo Configurando variables de entorno...
 set DB_PASSWORD=Gg3sT50J9fhk55Af
 set DB_USER=smartuser
-set DB_HOST=localhost
+set DB_HOST=192.168.197.93
 set DB_PORT=5432
 set DB_NAME=smart_db
 

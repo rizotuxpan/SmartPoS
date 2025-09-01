@@ -66,7 +66,7 @@ async def get_latest_version():
 # -------------------------------------------
 app.include_router(
     proveedor_router,
-    prefix="/proveedor",
+    prefix="/proveedores",
     tags=["Proveedores"]
 )
 
