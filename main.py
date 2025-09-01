@@ -31,7 +31,8 @@ from tamanos           import router as tamanos_router        # tamanos.py
 from colores           import router as colores_router        # colores.py
 from tallas            import router as tallas_router         # tallas.py
 # ===== NUEVOS ROUTERS PARA ETAPA II
-from proveedor        import router as proveedor_router      # proveedor.py
+from proveedor         import router as proveedor_router      # proveedor.py
+from compra            import router as compra_router         # compra.py
 
 # -------------------------------
 # Inicializacion de la aplicacion
@@ -64,12 +65,18 @@ async def get_latest_version():
 # -------------------------------------------
 # Inclusion de routers (modulos de endpoints)
 # -------------------------------------------
+
+app.include_router(
+    compra_router,
+    prefix="/compras",
+    tags=["Compras"]
+)
+
 app.include_router(
     proveedor_router,
     prefix="/proveedores",
     tags=["Proveedores"]
 )
-
 
 app.include_router(
     marcas_router,

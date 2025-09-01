@@ -102,7 +102,7 @@ class ProveedorBase(BaseModel):
     direccion: Optional[str] = Field(None, max_length=300)
     ciudad: Optional[str] = Field(None, max_length=100)
     estado: Optional[str] = Field(None, max_length=100)
-    codigo_postal: Optional[str] = Field(None, max_length=10, pattern=r'^\d{5}$', description="Código postal de 5 dígitos")
+    codigo_postal: Optional[str] = Field(None, max_length=5, description="Código postal de 5 dígitos")
     pais: Optional[str] = Field("MEXICO", max_length=50)
     observaciones: Optional[str] = None
 
@@ -121,7 +121,7 @@ class ProveedorUpdate(BaseModel):
     direccion: Optional[str] = Field(None, max_length=300)
     ciudad: Optional[str] = Field(None, max_length=100)
     estado: Optional[str] = Field(None, max_length=100)
-    codigo_postal: Optional[str] = Field(None, max_length=10, pattern=r'^\d{5}$')
+    codigo_postal: Optional[str] = Field(None, max_length=5)
     pais: Optional[str] = Field(None, max_length=50)
     observaciones: Optional[str] = None
 
