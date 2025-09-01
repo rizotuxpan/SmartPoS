@@ -53,7 +53,7 @@ class Proveedor(Base):
     ciudad = Column(String(100))
     estado = Column(String(100))
     codigo_postal = Column(String(10))
-    pais = Column(String(50), server_default=text("'México'::character varying"))
+    pais = Column(String(50), server_default=text("'MEXICO'::character varying"))
     # Observaciones generales
     observaciones = Column(Text)
     # Auditoría: quién creó y modificó el proveedor (UUIDs)
@@ -94,7 +94,7 @@ class ProveedorBase(BaseModel):
     Esquema base con campos comunes para crear/actualizar Proveedor.
     """
     razon_social: str = Field(..., max_length=200, description="Razón social del proveedor")
-    rfc: Optional[str] = Field(None, max_length=13, min_length=12, description="RFC del proveedor")
+    rfc: Optional[str] = Field(None, max_length=13, description="RFC del proveedor")
     nombre_contacto: Optional[str] = Field(None, max_length=100)
     telefono: Optional[str] = Field(None, max_length=20)
     celular: Optional[str] = Field(None, max_length=20)
@@ -103,30 +103,8 @@ class ProveedorBase(BaseModel):
     ciudad: Optional[str] = Field(None, max_length=100)
     estado: Optional[str] = Field(None, max_length=100)
     codigo_postal: Optional[str] = Field(None, max_length=10, pattern=r'^\d{5}$', description="Código postal de 5 dígitos")
-    pais: Optional[str] = Field("México", max_length=50)
+    pais: Optional[str] = Field("MEXICO", max_length=50)
     observaciones: Optional[str] = None
-
-    @field_validator('rfc')
-    @classmethod
-    def validar_rfc(cls, v):
-        """Validar formato básico del RFC"""
-        if v and v.strip():
-            v = v.upper().strip()
-            if len(v) not in [12, 13]:
-                raise ValueError('RFC debe tener 12 o 13 caracteres')
-            return v
-        return None
-
-    @field_validator('razon_social')
-    @classmethod
-    def validar_razon_social(cls, v):
-        """Validar y limpiar razón social"""
-        if v:
-            v = v.strip()
-            if len(v) < 2:
-                raise ValueError('Razón social debe tener al menos 2 caracteres')
-            return v
-        raise ValueError('Razón social es obligatoria')
 
 class ProveedorCreate(ProveedorBase):
     """Esquema para creación; hereda todos los campos base."""
@@ -135,7 +113,7 @@ class ProveedorCreate(ProveedorBase):
 class ProveedorUpdate(BaseModel):
     """Esquema para actualización con campos opcionales."""
     razon_social: Optional[str] = Field(None, max_length=200)
-    rfc: Optional[str] = Field(None, max_length=13, min_length=12)
+    rfc: Optional[str] = Field(None, max_length=13)
     nombre_contacto: Optional[str] = Field(None, max_length=100)
     telefono: Optional[str] = Field(None, max_length=20)
     celular: Optional[str] = Field(None, max_length=20)
@@ -146,28 +124,6 @@ class ProveedorUpdate(BaseModel):
     codigo_postal: Optional[str] = Field(None, max_length=10, pattern=r'^\d{5}$')
     pais: Optional[str] = Field(None, max_length=50)
     observaciones: Optional[str] = None
-
-    @field_validator('rfc')
-    @classmethod
-    def validar_rfc(cls, v):
-        """Validar formato básico del RFC"""
-        if v and v.strip():
-            v = v.upper().strip()
-            if len(v) not in [12, 13]:
-                raise ValueError('RFC debe tener 12 o 13 caracteres')
-            return v
-        return None
-
-    @field_validator('razon_social')
-    @classmethod
-    def validar_razon_social(cls, v):
-        """Validar y limpiar razón social"""
-        if v is not None:
-            v = v.strip()
-            if len(v) < 2:
-                raise ValueError('Razón social debe tener al menos 2 caracteres')
-            return v
-        return v
 
 class ProveedorRead(ProveedorBase):
     """
