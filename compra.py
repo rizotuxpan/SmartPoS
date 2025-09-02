@@ -222,7 +222,8 @@ async def crear_compra(
         total=total,
         observaciones=entrada.observaciones,
         created_by=ctx["user_id"],
-        modified_by=ctx["user_id"]
+        modified_by=ctx["user_id"],
+        id_empresa=ctx["tenant_id"]  # ✅ AGREGAR ESTA LÍNEA QUE FALTABA
     )
     db.add(nueva_compra)
     await db.flush()
