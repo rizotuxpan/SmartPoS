@@ -35,7 +35,7 @@ class Compra(Base):
     total = Column(Numeric(14,2), nullable=False, server_default="0")
     observaciones = Column(Text)
     estado_compra = Column(String(20), nullable=False, server_default="PENDIENTE")
-    id_estado = Column(PG_UUID(as_uuid=True), nullable=False)
+    id_estado = id_estado = Column(PG_UUID(as_uuid=True), nullable=False, server_default=text("f_default_estatus_activo()"))
     created_by = Column(PG_UUID(as_uuid=True), nullable=False)
     modified_by = Column(PG_UUID(as_uuid=True), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -172,7 +172,7 @@ async def obtener_compra(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Obtiene una compra por ID, opcionalmente con detalles."""
-    estado_activo_id = await get_estado_id_por_clave("ACT", db)
+    estado_activo_id = await get_estado_id_por_clave("act", db)
     
     stmt = select(Compra).where(
         Compra.id_compra == id_compra,
@@ -211,6 +211,7 @@ async def crear_compra(
     total = subtotal + impuestos
     
     # Crear compra
+    estado_activo_id = await get_estado_id_por_clave("act", db)
     nueva_compra = Compra(
         id_proveedor=entrada.id_proveedor,
         id_almacen=entrada.id_almacen,
@@ -223,7 +224,8 @@ async def crear_compra(
         observaciones=entrada.observaciones,
         created_by=ctx["user_id"],
         modified_by=ctx["user_id"],
-        id_empresa=ctx["tenant_id"]  # ✅ AGREGAR ESTA LÍNEA QUE FALTABA
+        id_empresa=ctx["tenant_id"],
+        id_estado=estado_activo_id
     )
     db.add(nueva_compra)
     await db.flush()
