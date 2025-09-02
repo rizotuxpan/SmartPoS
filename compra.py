@@ -172,7 +172,7 @@ async def obtener_compra(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Obtiene una compra por ID, opcionalmente con detalles."""
-    estado_activo_id = await get_estado_id_por_clave("act", db)
+    estado_activo_id = await get_estado_id_por_clave("ACT", db)
     
     stmt = select(Compra).where(
         Compra.id_compra == id_compra,
