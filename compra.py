@@ -195,11 +195,7 @@ async def obtener_compra(
         detalles = result_detalles.scalars().all()
         compra_read.detalles = [CompraDetalleRead.model_validate(d) for d in detalles]
     
-    # Envolver la respuesta
-    return {
-        "success": True,
-        "data": compra_read
-    }
+    return compra_read
 
 @router.post("/", response_model=dict, status_code=201)
 async def crear_compra(
