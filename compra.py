@@ -165,7 +165,7 @@ async def listar_compras(
         "data": [CompraRead.model_validate(c) for c in data]
     }
 
-@router.get("/{id_compra}", response_model=CompraRead)
+@router.get("/{id_compra}", response_model=dict)
 async def obtener_compra(
     id_compra: UUID,
     incluir_detalles: bool = Query(True),
@@ -195,7 +195,11 @@ async def obtener_compra(
         detalles = result_detalles.scalars().all()
         compra_read.detalles = [CompraDetalleRead.model_validate(d) for d in detalles]
     
-    return compra_read
+    return {
+        "success": True,
+        "total_count": 1,
+        "data": [compra_read]
+    }
 
 @router.post("/", response_model=dict, status_code=201)
 async def crear_compra(
@@ -370,7 +374,7 @@ async def recibir_compra(
     
     return {"success": True, "message": "Compra recibida y inventario actualizado"}
 
-@router.get("/movimientos/{id_almacen}", response_model=List[dict])
+@router.get("/movimientos/{id_almacen}", response_model=dict)
 async def obtener_movimientos_inventario(
     id_almacen: UUID,
     id_producto_variante: Optional[UUID] = Query(None),
@@ -395,12 +399,17 @@ async def obtener_movimientos_inventario(
     if fecha_hasta:
         stmt = stmt.where(func.date(MovimientoInventario.created_at) <= fecha_hasta)
     
+    # Contar total de registros para paginación
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total = await db.scalar(total_stmt)
+    
+    # Aplicar paginación y ordenamiento
     stmt = stmt.order_by(MovimientoInventario.created_at.desc()).offset(skip).limit(limit)
     
     result = await db.execute(stmt)
     movimientos = result.scalars().all()
     
-    return [
+    data = [
         {
             "id_movimiento": str(m.id_movimiento),
             "tipo_movimiento": m.tipo_movimiento,
@@ -414,3 +423,9 @@ async def obtener_movimientos_inventario(
         }
         for m in movimientos
     ]
+    
+    return {
+        "success": True,
+        "total_count": total,
+        "data": data
+    }
